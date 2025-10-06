@@ -1,0 +1,6 @@
+Müşteri Adı Soyadı,Tarih,Tahsilat Şekli,Hesap Adı,Ödenen Tutar(Σ:1000000.00),Ödenen Döviz,Proje Adı
+Ahmet Yılmaz,15/01/2024,Vadeli Ödeme,Çarşı Kasa,50000,TL,Model Kuyum Merkezi
+Ayşe Demir,16/01/2024,Banka Havalesi,Yapı Kredi Bankası,25000,USD,Model Sanayi Merkezi
+Mehmet Kaya,17/01/2024,Çek,Ofis Kasa,75000,TL,Model Kuyum Merkezi
+Fatma Özkan,18/01/2024,Vadeli Ödeme,Kuyumcukent Kasa,30000,EUR,Model Sanayi Merkezi
+Ali Çelik,19/01/2024,Banka Havalesi,Yapı Kredi Bankası,40000,TL,Model Kuyum Merkezi
