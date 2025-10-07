@@ -1,0 +1,6 @@
+Müşteri Adı Soyadı,Tarih,Ödenen Tutar,Ödenen Döviz,Tahsilat Şekli,Hesap Adı,Proje Adı
+Test Customer 1,06/10/2025,1000,TL,Nakit,Çarşı Kasa,MKM
+Test Customer 2,6/10/2025,500,USD,Banka Havalesi,Yapı Kredi,MSM
+Test Customer 3,06.10.2025,2000,TL,Çek,Çek Hesabı,MKM
+Test Customer 4,2025-10-06,750,EUR,Banka Havalesi,Yapı Kredi,MSM
+Test Customer 5,45564,1500,TL,Nakit,Ofis Kasa,MKM

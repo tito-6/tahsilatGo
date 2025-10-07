@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"tahsilat-raporu/models"
@@ -8,20 +9,73 @@ import (
 )
 
 // GenerateWeeklyReports creates weekly reports from payment records
+// For cross-month weeks, it creates separate reports for each month portion
 func GenerateWeeklyReports(payments []models.PaymentRecord) []models.WeeklyReport {
 	weekMap := make(map[string][]models.PaymentRecord)
 
-	// Group payments by week
+	// Group payments by week-month combination to handle cross-month weeks
 	for _, payment := range payments {
 		weekStart := getWeekStart(payment.PaymentDate)
-		key := weekStart.Format("2006-01-02")
-		weekMap[key] = append(weekMap[key], payment)
+		weekEnd := weekStart.AddDate(0, 0, 6)
+		
+		// If week spans multiple months, use month-specific key
+		if weekStart.Month() != weekEnd.Month() {
+			// Use payment's month for the key to separate cross-month weeks
+			monthKey := payment.PaymentDate.Format("2006-01")
+			key := fmt.Sprintf("%s-%s", weekStart.Format("2006-01-02"), monthKey)
+			weekMap[key] = append(weekMap[key], payment)
+		} else {
+			// Normal single-month week
+			key := weekStart.Format("2006-01-02")
+			weekMap[key] = append(weekMap[key], payment)
+		}
 	}
 
 	var reports []models.WeeklyReport
-	for _, weekPayments := range weekMap {
-		report := aggregateWeek(weekPayments)
-		reports = append(reports, report)
+	for key, weekPayments := range weekMap {
+		if len(weekPayments) > 0 {
+			report := aggregateWeek(weekPayments)
+			
+			// For cross-month weeks, adjust the date range to match the actual payment dates
+			if strings.Contains(key, "-") {
+				// This is a cross-month week portion
+				parts := strings.Split(key, "-")
+				if len(parts) >= 4 {
+					// Find the actual date range for payments in this month portion
+					var minDate, maxDate time.Time
+					for i, payment := range weekPayments {
+						if i == 0 {
+							minDate = payment.PaymentDate
+							maxDate = payment.PaymentDate
+						} else {
+							if payment.PaymentDate.Before(minDate) {
+								minDate = payment.PaymentDate
+							}
+							if payment.PaymentDate.After(maxDate) {
+								maxDate = payment.PaymentDate
+							}
+						}
+					}
+					
+					// Adjust the report dates to reflect the actual range for this month portion
+					weekStart := getWeekStart(weekPayments[0].PaymentDate)
+					weekEnd := weekStart.AddDate(0, 0, 6)
+					
+					// If this is the earlier month portion, end date should be last day of month
+					if minDate.Month() < weekEnd.Month() {
+						lastDayOfMonth := time.Date(minDate.Year(), minDate.Month()+1, 0, 23, 59, 59, 0, minDate.Location())
+						report.EndDate = lastDayOfMonth
+					}
+					// If this is the later month portion, start date should be first day of month  
+					if maxDate.Month() > weekStart.Month() {
+						firstDayOfMonth := time.Date(maxDate.Year(), maxDate.Month(), 1, 0, 0, 0, 0, maxDate.Location())
+						report.StartDate = firstDayOfMonth
+					}
+				}
+			}
+			
+			reports = append(reports, report)
+		}
 	}
 
 	// Sort reports by start date
@@ -140,8 +194,12 @@ func aggregateMonth(payments []models.PaymentRecord) models.MonthlyReport {
 	month := time.Date(payments[0].PaymentDate.Year(), payments[0].PaymentDate.Month(), 1, 0, 0, 0, 0, time.UTC)
 
 	report := models.MonthlyReport{
-		Month:           month,
-		LocationSummary: make(map[string]models.LocationTotal),
+		Month:             month,
+		LocationSummary:   make(map[string]models.LocationTotal),
+		DailyTotals:       make(map[string]float64),
+		PaymentMethods:    make(map[string]models.PaymentMethodTotal),
+		MKMPaymentMethods: make(map[string]models.PaymentMethodTotal),
+		MSMPaymentMethods: make(map[string]models.PaymentMethodTotal),
 	}
 
 	// Initialize locations
@@ -153,11 +211,57 @@ func aggregateMonth(payments []models.PaymentRecord) models.MonthlyReport {
 
 	// Aggregate payments
 	for _, payment := range payments {
+		// Daily totals - format date as YYYY-MM-DD
+		dateKey := payment.PaymentDate.Format("2006-01-02")
+		report.DailyTotals[dateKey] += payment.AmountUSD
+
 		// Project summary
 		if payment.Project == models.ProjectMKM {
 			report.ProjectSummary.MKM += payment.AmountUSD
 		} else if payment.Project == models.ProjectMSM {
 			report.ProjectSummary.MSM += payment.AmountUSD
+		}
+
+		// Payment method summary
+		paymentMethod := payment.PaymentMethod
+		// Initialize if not exists
+		if _, exists := report.PaymentMethods[paymentMethod]; !exists {
+			report.PaymentMethods[paymentMethod] = models.PaymentMethodTotal{}
+		}
+		method := report.PaymentMethods[paymentMethod]
+		if payment.Currency == "TL" {
+			method.TL += payment.Amount
+		} else {
+			method.USD += payment.Amount
+		}
+		method.TotalUSD += payment.AmountUSD
+		report.PaymentMethods[paymentMethod] = method
+
+		// Project-specific payment method summary
+		if payment.Project == models.ProjectMKM {
+			if _, exists := report.MKMPaymentMethods[paymentMethod]; !exists {
+				report.MKMPaymentMethods[paymentMethod] = models.PaymentMethodTotal{}
+			}
+			mkmMethod := report.MKMPaymentMethods[paymentMethod]
+			if payment.Currency == "TL" {
+				mkmMethod.TL += payment.Amount
+			} else {
+				mkmMethod.USD += payment.Amount
+			}
+			mkmMethod.TotalUSD += payment.AmountUSD
+			report.MKMPaymentMethods[paymentMethod] = mkmMethod
+		} else if payment.Project == models.ProjectMSM {
+			if _, exists := report.MSMPaymentMethods[paymentMethod]; !exists {
+				report.MSMPaymentMethods[paymentMethod] = models.PaymentMethodTotal{}
+			}
+			msmMethod := report.MSMPaymentMethods[paymentMethod]
+			if payment.Currency == "TL" {
+				msmMethod.TL += payment.Amount
+			} else {
+				msmMethod.USD += payment.Amount
+			}
+			msmMethod.TotalUSD += payment.AmountUSD
+			report.MSMPaymentMethods[paymentMethod] = msmMethod
 		}
 
 		// Location summary based on payment method and account name
@@ -255,4 +359,131 @@ func GetCustomerTotals(payments []models.PaymentRecord) map[string]float64 {
 		totals[payment.CustomerName] += payment.AmountUSD
 	}
 	return totals
+}
+
+// GenerateYearlyReport generates a yearly summary report
+func GenerateYearlyReport(payments []models.Payment, year int) models.YearlyReport {
+	report := models.YearlyReport{
+		Year: year,
+		ProjectSummary: models.ProjectTotal{
+			MKM: 0,
+			MSM: 0,
+		},
+		LocationSummary:   make(map[string]models.LocationTotal),
+		PaymentMethods:    make(map[string]models.PaymentMethodTotal),
+		MKMPaymentMethods: make(map[string]models.PaymentMethodTotal),
+		MSMPaymentMethods: make(map[string]models.PaymentMethodTotal),
+	}
+
+	// Initialize location summaries
+	locations := []string{"BANKA HAVALESİ", "CARŞI", "KUYUMCUKENT", "OFİS", "ÇEK"}
+	for _, location := range locations {
+		report.LocationSummary[location] = models.LocationTotal{
+			MKM:   0,
+			MSM:   0,
+			Total: 0,
+		}
+	}
+
+	// Initialize payment methods
+	paymentMethods := []string{"Banka Havalesi", "Nakit", "Çek"}
+	for _, method := range paymentMethods {
+		report.PaymentMethods[method] = models.PaymentMethodTotal{}
+		report.MKMPaymentMethods[method] = models.PaymentMethodTotal{}
+		report.MSMPaymentMethods[method] = models.PaymentMethodTotal{}
+	}
+
+	// Process each payment
+	for _, payment := range payments {
+		// Update project summary
+		if payment.Project == models.ProjectMKM {
+			report.ProjectSummary.MKM += payment.AmountUSD
+		} else if payment.Project == models.ProjectMSM {
+			report.ProjectSummary.MSM += payment.AmountUSD
+		}
+
+		// Get payment method
+		paymentMethod := getPaymentMethodFromString(payment.PaymentMethod)
+
+		// Update general payment methods
+		if _, exists := report.PaymentMethods[paymentMethod]; !exists {
+			report.PaymentMethods[paymentMethod] = models.PaymentMethodTotal{}
+		}
+		method := report.PaymentMethods[paymentMethod]
+		if payment.Currency == "TL" {
+			method.TL += payment.Amount
+		} else {
+			method.USD += payment.Amount
+		}
+		method.TotalUSD += payment.AmountUSD
+		report.PaymentMethods[paymentMethod] = method
+
+		// Project-specific payment method summary
+		if payment.Project == models.ProjectMKM {
+			if _, exists := report.MKMPaymentMethods[paymentMethod]; !exists {
+				report.MKMPaymentMethods[paymentMethod] = models.PaymentMethodTotal{}
+			}
+			mkmMethod := report.MKMPaymentMethods[paymentMethod]
+			if payment.Currency == "TL" {
+				mkmMethod.TL += payment.Amount
+			} else {
+				mkmMethod.USD += payment.Amount
+			}
+			mkmMethod.TotalUSD += payment.AmountUSD
+			report.MKMPaymentMethods[paymentMethod] = mkmMethod
+		} else if payment.Project == models.ProjectMSM {
+			if _, exists := report.MSMPaymentMethods[paymentMethod]; !exists {
+				report.MSMPaymentMethods[paymentMethod] = models.PaymentMethodTotal{}
+			}
+			msmMethod := report.MSMPaymentMethods[paymentMethod]
+			if payment.Currency == "TL" {
+				msmMethod.TL += payment.Amount
+			} else {
+				msmMethod.USD += payment.Amount
+			}
+			msmMethod.TotalUSD += payment.AmountUSD
+			report.MSMPaymentMethods[paymentMethod] = msmMethod
+		}
+
+		// Location summary based on payment method and account name
+		location := getLocationFromPayment(models.PaymentRecord{
+			ID:            payment.ID,
+			CustomerName:  payment.CustomerName,
+			Amount:        payment.Amount,
+			Currency:      payment.Currency,
+			PaymentMethod: payment.PaymentMethod,
+			PaymentDate:   payment.PaymentDate,
+			AccountName:   payment.AccountName,
+			Project:       payment.Project,
+			Location:      payment.Location,
+			AmountUSD:     payment.AmountUSD,
+			ExchangeRate:  payment.ExchangeRate,
+			CreatedAt:     payment.CreatedAt,
+		})
+		if loc, exists := report.LocationSummary[location]; exists {
+			if payment.Project == models.ProjectMKM {
+				loc.MKM += payment.AmountUSD
+			} else if payment.Project == models.ProjectMSM {
+				loc.MSM += payment.AmountUSD
+			}
+			loc.Total += payment.AmountUSD
+			report.LocationSummary[location] = loc
+		}
+	}
+
+	return report
+}
+
+func getPaymentMethodFromString(method string) string {
+	m := strings.ToLower(strings.TrimSpace(method))
+	switch m {
+	case "banka havalesi", "havale", "transfer":
+		return "Banka Havalesi"
+	case "nakit", "cash":
+		return "Nakit"
+	case "çek", "cheque", "check":
+		return "Çek"
+	default:
+		return method
+	}
 }

@@ -1,5 +1,12 @@
 import axios from 'axios';
-import { PaymentRecord, RawPaymentData, UploadRequest, UploadResponse, ReportsResponse } from '../types/payment.types';
+import { 
+  RawPaymentData, 
+  UploadRequest, 
+  UploadResponse, 
+  PaymentRecord, 
+  ReportsResponse,
+  YearlyReport
+} from '../types/payment.types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
@@ -49,6 +56,18 @@ export const paymentAPI = {
   // Get reports
   getReports: async (): Promise<ReportsResponse> => {
     const response = await api.get<ReportsResponse>('/reports');
+    return response.data;
+  },
+
+  // Get yearly report
+  getYearlyReport: async (year: number): Promise<YearlyReport> => {
+    const response = await api.get<YearlyReport>(`/reports/yearly/${year}`);
+    return response.data;
+  },
+
+  // Clear all payments
+  clearAllPayments: async (): Promise<{ message: string; cleared: number }> => {
+    const response = await api.delete<{ message: string; cleared: number }>('/payments');
     return response.data;
   },
 

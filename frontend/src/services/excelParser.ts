@@ -253,23 +253,37 @@ export class ExcelParser {
       throw new Error('Customer name cannot be empty');
     }
 
-    // Parse date properly (prefer text date if present)
-    let parsedDate: Date | null = null;
-    if (typeof row['Tarih'] === 'string' && row['Tarih'].match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)) {
-      // Use text date directly
-      parsedDate = this.parseDate(row['Tarih']);
+    // Parse date and send original format to backend for proper handling
+    const originalDateValue = row['Tarih'];
+    let tarih: string;
+    
+    // Check if it's "DD Month YYYY" format - send as-is to backend
+    if (typeof originalDateValue === 'string') {
+      const trimmedDate = originalDateValue.trim();
+      
+      // Check for "DD Month YYYY" pattern
+      const monthPattern = /^\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}$/i;
+      if (monthPattern.test(trimmedDate)) {
+        tarih = trimmedDate; // Send "DD Month YYYY" format directly to backend
+        console.log(`Row ${rowNumber}: Sending "DD Month YYYY" format to backend: ${tarih}`);
+      } else {
+        // For other string formats, parse and convert to DD/MM/YYYY
+        const parsedDate = this.parseDate(originalDateValue);
+        if (!parsedDate) {
+          throw new Error('Invalid or empty date');
+        }
+        tarih = `${parsedDate.getDate().toString().padStart(2, '0')}/${(parsedDate.getMonth() + 1).toString().padStart(2, '0')}/${parsedDate.getFullYear()}`;
+        console.log(`Row ${rowNumber}: Converted to DD/MM/YYYY format: ${tarih}`);
+      }
     } else {
-      // Fallback: try serial or other formats
-      parsedDate = this.parseDate(row['Tarih']);
+      // For non-string dates (like Excel serials), parse and convert to DD/MM/YYYY
+      const parsedDate = this.parseDate(originalDateValue);
+      if (!parsedDate) {
+        throw new Error('Invalid or empty date');
+      }
+      tarih = `${parsedDate.getDate().toString().padStart(2, '0')}/${(parsedDate.getMonth() + 1).toString().padStart(2, '0')}/${parsedDate.getFullYear()}`;
+      console.log(`Row ${rowNumber}: Original date value: ${originalDateValue}, Converted to: ${tarih}`);
     }
-    if (!parsedDate) {
-      throw new Error('Invalid or empty date');
-    }
-    
-    // Format date as DD/MM/YYYY for backend
-    const tarih = `${parsedDate.getDate().toString().padStart(2, '0')}/${(parsedDate.getMonth() + 1).toString().padStart(2, '0')}/${parsedDate.getFullYear()}`;
-    
-    console.log(`Row ${rowNumber}: Original date value: ${row['Tarih']}, Parsed date: ${tarih}`);
 
     const amount = this.parseAmount(row[odenenTutarKey]);
     if (amount <= 0) {
@@ -318,6 +332,27 @@ export class ExcelParser {
     // Handle different date formats
     const dateStr = String(dateValue).trim();
     
+    // NEW: Handle "DD Month YYYY" format (like "31 January 2025")
+    const monthNames = {
+      'january': 0, 'february': 1, 'march': 2, 'april': 3, 'may': 4, 'june': 5,
+      'july': 6, 'august': 7, 'september': 8, 'october': 9, 'november': 10, 'december': 11
+    };
+    
+    const monthPattern = /^(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})$/i;
+    const monthMatch = dateStr.match(monthPattern);
+    if (monthMatch) {
+      const day = parseInt(monthMatch[1], 10);
+      const monthName = monthMatch[2].toLowerCase();
+      const year = parseInt(monthMatch[3], 10);
+      
+      if (monthNames.hasOwnProperty(monthName)) {
+        const month = monthNames[monthName as keyof typeof monthNames];
+        const date = new Date(year, month, day);
+        console.log(`✅ Parsed "DD Month YYYY" date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
+        return date;
+      }
+    }
+    
     // Try DD/MM/YYYY format (prioritize text dates from Excel)
     const ddmmyyyy = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
     if (ddmmyyyy) {
@@ -325,7 +360,7 @@ export class ExcelParser {
       const month = parseInt(ddmmyyyy[2], 10);
       const year = parseInt(ddmmyyyy[3], 10);
       const date = new Date(year, month - 1, day);
-      console.log(`Parsed text date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
+      console.log(`✅ Parsed DD/MM/YYYY date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
       return date;
     }
 
@@ -336,7 +371,7 @@ export class ExcelParser {
       const month = parseInt(yyyymmdd[2], 10);
       const day = parseInt(yyyymmdd[3], 10);
       const date = new Date(year, month - 1, day);
-      console.log(`Parsed YYYY-MM-DD date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
+      console.log(`✅ Parsed YYYY-MM-DD date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
       return date;
     }
 
@@ -359,18 +394,18 @@ export class ExcelParser {
       const millisInDay = fractionalDay * 24 * 60 * 60 * 1000;
       date.setTime(date.getTime() + millisInDay);
       
-      console.log(`Parsed Excel serial: ${dateValue} -> ${date.toLocaleDateString('en-GB')}`);
+      console.log(`✅ Parsed Excel serial: ${dateValue} -> ${date.toLocaleDateString('en-GB')}`);
       return date;
     }
 
     // Try parsing as Date string
     const date = new Date(dateStr);
     if (!isNaN(date.getTime())) {
-      console.log(`Parsed generic date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
+      console.log(`✅ Parsed generic date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
       return date;
     }
 
-    console.warn(`Could not parse date: ${dateValue} (${typeof dateValue})`);
+    console.warn(`❌ Could not parse date: ${dateValue} (${typeof dateValue})`);
     return null;
   }
 

@@ -41,8 +41,10 @@ func main() {
 		api.POST("/analyze", uploadHandler.GetRawPaymentInfo)     // Add analyze endpoint
 		api.GET("/payments", uploadHandler.GetPayments)
 		api.GET("/reports", uploadHandler.GetReports)
+		api.GET("/reports/yearly/:year", uploadHandler.GetYearlyReport) // Add yearly report endpoint
 		api.DELETE("/payments", uploadHandler.ClearAllPayments) // Add clear endpoint
 		api.GET("/stats", uploadHandler.GetDatabaseStats)       // Add stats endpoint
+		api.GET("/audit/report", uploadHandler.AuditReportGeneration) // Add report audit endpoint
 		api.GET("/export/excel", exportHandler.ExportExcel)
 		api.GET("/export/pdf", exportHandler.ExportPDF)
 	}
@@ -80,6 +82,7 @@ func initDB() (*sql.DB, error) {
 		account_name TEXT NOT NULL,
 		amount_usd REAL NOT NULL,
 		exchange_rate REAL NOT NULL,
+		raw_data TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`
@@ -87,6 +90,10 @@ func initDB() (*sql.DB, error) {
 	if _, err := db.Exec(createTableSQL); err != nil {
 		return nil, err
 	}
+
+	// Add raw_data column if it doesn't exist (for existing databases)
+	alterTableSQL := `ALTER TABLE payments ADD COLUMN raw_data TEXT`
+	db.Exec(alterTableSQL) // Ignore error - column might already exist
 
 	// Create indexes for better performance
 	indexSQL := `

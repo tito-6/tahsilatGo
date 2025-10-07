@@ -3,18 +3,27 @@ import { FileUpload } from './components/FileUpload';
 import { WeeklyReport } from './components/WeeklyReport';
 import { MonthlyReport } from './components/MonthlyReport';
 import { DebugPanel } from './components/DebugPanel';
+import YearlyReportComponent from './components/YearlyReport';
 import { paymentAPI } from './services/api';
-import { WeeklyReport as WeeklyReportType, MonthlyReport as MonthlyReportType, UploadResponse } from './types/payment.types';
+import { WeeklyReport as WeeklyReportType, MonthlyReport as MonthlyReportType, UploadResponse, YearlyReport } from './types/payment.types';
 
 function App() {
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReportType[]>([]);
   const [monthlyReports, setMonthlyReports] = useState<MonthlyReportType[]>([]);
+  const [yearlyReport, setYearlyReport] = useState<YearlyReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'reports' | 'debug'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'reports' | 'yearly' | 'debug'>('upload');
   const [selectedMonth, setSelectedMonth] = useState<string | 'all'>('all');
   const [reportType, setReportType] = useState<'weekly' | 'monthly'>('weekly');
+  const currentYear = new Date().getFullYear();
+
+  // Clear localStorage and sessionStorage on app load
+  useEffect(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  }, []);
 
   // Get available months from reports
   const getAvailableMonths = () => {
@@ -70,6 +79,63 @@ function App() {
     loadReports();
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'yearly') {
+      // Aggregate yearly report from loaded monthly reports
+      const year = currentYear;
+      const mkmTotals = { tl: 0, usd: 0, total_usd: 0 };
+      const msmTotals = { tl: 0, usd: 0, total_usd: 0 };
+      const paymentMethods = { 'Banka Havalesi': { tl: 0, usd: 0, total_usd: 0 }, 'Nakit': { tl: 0, usd: 0, total_usd: 0 }, 'Çek': { tl: 0, usd: 0, total_usd: 0 } };
+      const mkmPaymentMethods = { 'Banka Havalesi': { tl: 0, usd: 0, total_usd: 0 }, 'Nakit': { tl: 0, usd: 0, total_usd: 0 }, 'Çek': { tl: 0, usd: 0, total_usd: 0 } };
+      const msmPaymentMethods = { 'Banka Havalesi': { tl: 0, usd: 0, total_usd: 0 }, 'Nakit': { tl: 0, usd: 0, total_usd: 0 }, 'Çek': { tl: 0, usd: 0, total_usd: 0 } };
+      const locationSummary: Record<string, { mkm: number; msm: number; total: number }> = {
+        'BANKA HAVALESİ': { mkm: 0, msm: 0, total: 0 },
+        'CARŞI': { mkm: 0, msm: 0, total: 0 },
+        'KUYUMCUKENT': { mkm: 0, msm: 0, total: 0 },
+        'OFİS': { mkm: 0, msm: 0, total: 0 },
+        'ÇEK': { mkm: 0, msm: 0, total: 0 },
+      };
+      let mkmUSD = 0, msmUSD = 0;
+      monthlyReports.forEach(report => {
+        const reportYear = new Date(report.month).getFullYear();
+        if (reportYear === year) {
+          mkmUSD += report.project_summary.mkm;
+          msmUSD += report.project_summary.msm;
+          // Aggregate payment methods
+          ['Banka Havalesi', 'Nakit', 'Çek'].forEach(method => {
+            const mkm = report.mkm_payment_methods?.[method] || { tl: 0, usd: 0, total_usd: 0 };
+            const msm = report.msm_payment_methods?.[method] || { tl: 0, usd: 0, total_usd: 0 };
+            (mkmPaymentMethods[method as keyof typeof mkmPaymentMethods].tl += mkm.tl);
+            (mkmPaymentMethods[method as keyof typeof mkmPaymentMethods].usd += mkm.usd);
+            (mkmPaymentMethods[method as keyof typeof mkmPaymentMethods].total_usd += mkm.total_usd);
+            (msmPaymentMethods[method as keyof typeof msmPaymentMethods].tl += msm.tl);
+            (msmPaymentMethods[method as keyof typeof msmPaymentMethods].usd += msm.usd);
+            (msmPaymentMethods[method as keyof typeof msmPaymentMethods].total_usd += msm.total_usd);
+            (paymentMethods[method as keyof typeof paymentMethods].tl += mkm.tl + msm.tl);
+            (paymentMethods[method as keyof typeof paymentMethods].usd += mkm.usd + msm.usd);
+            (paymentMethods[method as keyof typeof paymentMethods].total_usd += mkm.total_usd + msm.total_usd);
+          });
+          // Aggregate location summary
+          Object.entries(report.location_summary).forEach(([loc, summary]) => {
+            if (locationSummary[loc]) {
+              locationSummary[loc].mkm += summary.mkm;
+              locationSummary[loc].msm += summary.msm;
+              locationSummary[loc].total += summary.total;
+            }
+          });
+        }
+      });
+      setYearlyReport({
+        year,
+        project_summary: { mkm: mkmUSD, msm: msmUSD },
+        location_summary: locationSummary,
+        payment_methods: paymentMethods,
+        mkm_payment_methods: mkmPaymentMethods,
+        msm_payment_methods: msmPaymentMethods,
+      });
+    }
+  }, [activeTab, currentYear, monthlyReports]);
+
   const loadReports = async () => {
     try {
       setIsLoading(true);
@@ -83,6 +149,25 @@ function App() {
       setMonthlyReports([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (window.confirm('Bu işlem tüm verileri silecektir. Emin misiniz?')) {
+      try {
+        setIsLoading(true);
+        await paymentAPI.clearAllPayments();
+        setWeeklyReports([]);
+        setMonthlyReports([]);
+        setYearlyReport(null);
+        setSuccess('Tüm veriler başarıyla silindi');
+        setError(null);
+      } catch (err) {
+        setError('Veriler silinirken hata oluştu');
+        console.error('Clear data error:', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -112,141 +197,52 @@ function App() {
     setTimeout(() => setError(null), 10000);
   };
 
-  const handleExportExcel = async () => {
-    try {
-      setIsLoading(true);
-      const blob = await paymentAPI.exportExcel();
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'tahsilat-raporu.xlsx';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      setSuccess('Excel dosyası başarıyla indirildi');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (error) {
-      setError('Excel dosyası indirilemedi');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleExportPDF = async () => {
-    try {
-      setIsLoading(true);
-      const blob = await paymentAPI.exportPDF();
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'tahsilat-raporu.pdf';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      setSuccess('PDF dosyası başarıyla indirildi');
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (error) {
-      setError('PDF dosyası indirilemedi');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Tahsilat Raporu
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Model Kuyum Merkezi - Model Sanayi Merkezi Ödeme Takip Sistemi
-              </p>
-            </div>
-            
-            {/* Export Buttons */}
-            {weeklyReports && weeklyReports.length > 0 && (
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleExportExcel}
-                  disabled={isLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Excel İndir
-                </button>
-                
-                <button
-                  onClick={handleExportPDF}
-                  disabled={isLoading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  PDF İndir
-                </button>
-              </div>
-            )}
-          </div>
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-white shadow">
+        <div className="w-full py-6 px-4">
+          <h1 className="text-3xl font-bold text-gray-900">Tahsilat Raporu</h1>
         </div>
       </header>
 
-      {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+      <main className="w-full py-8 px-4">
+        {/* Tab Navigation */}
+        <div className="mb-8 flex space-x-4 justify-between">
+          <div className="flex space-x-4">
             <button
               onClick={() => setActiveTab('upload')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'upload'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'upload' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
             >
-              Dosya Yükleme
+              Dosya Yükle
             </button>
             <button
               onClick={() => setActiveTab('reports')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'reports'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'reports' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
             >
               Raporlar
             </button>
             <button
-              onClick={() => setActiveTab('debug')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'debug'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              onClick={() => setActiveTab('yearly')}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'yearly' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
             >
-              🔧 Debug
+              Yıllık Raporlar
             </button>
-          </nav>
+            <button
+              onClick={() => setActiveTab('debug')}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'debug' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
+            >
+              Debug
+            </button>
+          </div>
+          <button
+            onClick={handleClearAllData}
+            disabled={isLoading}
+            className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {isLoading ? 'Siliniyor...' : 'Tüm Verileri Sil'}
+          </button>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Alert Messages */}
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
@@ -421,6 +417,10 @@ function App() {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'yearly' && yearlyReport && (
+          <YearlyReportComponent report={yearlyReport} />
         )}
       </main>
     </div>

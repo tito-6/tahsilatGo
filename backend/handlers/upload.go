@@ -57,15 +57,9 @@ func (h *UploadHandler) UploadPayments(c *gin.Context) {
 
 	// Save processed payments to database
 	var savedPayments []models.PaymentRecord
-	var duplicateCount int
 	for i, payment := range processedPayments {
 		if err := h.savePayment(payment); err != nil {
-			if strings.Contains(err.Error(), "Duplicate") {
-				duplicateCount++
-				log.Printf("Skipped duplicate payment: %s", payment.CustomerName)
-			} else {
-				errors = append(errors, fmt.Sprintf("Database error for %s: %v", payment.CustomerName, err))
-			}
+			errors = append(errors, fmt.Sprintf("Database error for %s: %v", payment.CustomerName, err))
 			continue
 		}
 		savedPayments = append(savedPayments, payment)
@@ -77,19 +71,16 @@ func (h *UploadHandler) UploadPayments(c *gin.Context) {
 	log.Printf("Generated %d weekly reports", len(weeklyReports))
 
 	message := fmt.Sprintf("Processed %d payments successfully", len(savedPayments))
-	if duplicateCount > 0 {
-		message += fmt.Sprintf(" (%d duplicates skipped)", duplicateCount)
-	}
 
 	response := models.UploadResponse{
-		Success:       len(savedPayments) > 0 || duplicateCount > 0,
+		Success:       len(savedPayments) > 0,
 		Message:       message,
 		Processed:     len(savedPayments),
 		Errors:        errors,
 		WeeklyReports: weeklyReports,
 	}
 
-	if len(savedPayments) == 0 && duplicateCount == 0 {
+	if len(savedPayments) == 0 {
 		response.Success = false
 		response.Message = "No payments were processed successfully"
 	}
@@ -144,41 +135,21 @@ func validatePayment(payment models.PaymentRecord) error {
 	return nil
 }
 
-// savePayment saves a payment record to the database (with duplicate checking)
+// savePayment saves a payment record to the database (allowing duplicates)
 func (h *UploadHandler) savePayment(payment models.PaymentRecord) error {
-	// Check for duplicate payment first
-	checkQuery := `
-		SELECT COUNT(*) FROM payments 
-		WHERE customer_name = ? AND payment_date = ? AND amount = ? AND currency = ? AND account_name = ?
-	`
-	
-	var count int
-	err := h.db.QueryRow(checkQuery,
-		payment.CustomerName,
-		payment.PaymentDate,
-		payment.Amount,
-		payment.Currency,
-		payment.AccountName,
-	).Scan(&count)
-	
-	if err != nil {
-		return err
-	}
-	
-	// If duplicate found, skip insertion
-	if count > 0 {
-		log.Printf("Duplicate payment detected for %s on %s, skipping", payment.CustomerName, payment.PaymentDate.Format("2006-01-02"))
-		return nil
-	}
-
+	// Note: Removed duplicate checking to allow duplicate payments in reports
 	query := `
 		INSERT INTO payments (
 			customer_name, payment_date, amount, currency, payment_method,
-			location, project, account_name, amount_usd, exchange_rate, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			location, project, account_name, amount_usd, exchange_rate, raw_data, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = h.db.Exec(query,
+	// Create raw data JSON for audit purposes
+	rawData := fmt.Sprintf(`{"original_date":"%s","processed_date":"%s","amount":%.2f,"currency":"%s"}`, 
+		payment.PaymentDate, payment.PaymentDate, payment.Amount, payment.Currency)
+
+	_, err := h.db.Exec(query,
 		payment.CustomerName,
 		payment.PaymentDate,
 		payment.Amount,
@@ -189,6 +160,7 @@ func (h *UploadHandler) savePayment(payment models.PaymentRecord) error {
 		payment.AccountName,
 		payment.AmountUSD,
 		payment.ExchangeRate,
+		rawData,
 		payment.CreatedAt,
 	)
 
@@ -197,7 +169,7 @@ func (h *UploadHandler) savePayment(payment models.PaymentRecord) error {
 
 // GetPayments retrieves all payments from the database
 func (h *UploadHandler) GetPayments(c *gin.Context) {
-	query := `SELECT * FROM payments ORDER BY payment_date DESC`
+	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments ORDER BY payment_date DESC`
 	rows, err := h.db.Query(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -221,6 +193,7 @@ func (h *UploadHandler) GetPayments(c *gin.Context) {
 			&payment.AmountUSD,
 			&payment.ExchangeRate,
 			&payment.CreatedAt,
+			&payment.RawData,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -235,7 +208,7 @@ func (h *UploadHandler) GetPayments(c *gin.Context) {
 // GetReports generates and returns weekly reports
 func (h *UploadHandler) GetReports(c *gin.Context) {
 	// Get all payments
-	query := `SELECT * FROM payments ORDER BY payment_date`
+	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments ORDER BY payment_date`
 	rows, err := h.db.Query(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -259,6 +232,7 @@ func (h *UploadHandler) GetReports(c *gin.Context) {
 			&payment.AmountUSD,
 			&payment.ExchangeRate,
 			&payment.CreatedAt,
+			&payment.RawData,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -277,8 +251,68 @@ func (h *UploadHandler) GetReports(c *gin.Context) {
 	})
 }
 
-// ClearAllPayments removes all payment records from the database
+// GetYearlyReport generates yearly report for a specific year
+func (h *UploadHandler) GetYearlyReport(c *gin.Context) {
+	yearStr := c.Param("year")
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid year parameter"})
+		return
+	}
+
+	// Query payments for the specific year
+	query := `
+	SELECT id, customer_name, amount, currency, payment_method, payment_date, 
+	       account_name, project, location, amount_usd, exchange_rate, created_at
+	FROM payments 
+	WHERE strftime('%Y', payment_date) = ?
+	ORDER BY payment_date ASC`
+
+	rows, err := h.db.Query(query, yearStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var payment models.Payment
+		err := rows.Scan(
+			&payment.ID,
+			&payment.CustomerName,
+			&payment.Amount,
+			&payment.Currency,
+			&payment.PaymentMethod,
+			&payment.PaymentDate,
+			&payment.AccountName,
+			&payment.Project,
+			&payment.Location,
+			&payment.AmountUSD,
+			&payment.ExchangeRate,
+			&payment.CreatedAt,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		payments = append(payments, payment)
+	}
+
+	// Generate yearly report
+	yearlyReport := services.GenerateYearlyReport(payments, year)
+
+	c.JSON(http.StatusOK, yearlyReport)
+}
+
+// ClearAllPayments removes all payment records with comprehensive audit and verification
 func (h *UploadHandler) ClearAllPayments(c *gin.Context) {
+	log.Printf("=== COMPREHENSIVE DATABASE CLEAR AUDIT ===")
+	
+	// Step 1: Pre-deletion audit
+	audit := h.auditDataBeforeDeletion()
+	
+	// Step 2: Delete all payments
 	query := `DELETE FROM payments`
 	result, err := h.db.Exec(query)
 	if err != nil {
@@ -290,9 +324,16 @@ func (h *UploadHandler) ClearAllPayments(c *gin.Context) {
 	rowsAffected, _ := result.RowsAffected()
 	log.Printf("Cleared %d payment records", rowsAffected)
 	
+	// Step 3: Post-deletion verification
+	verification := h.verifyDatabaseClear()
+	
+	log.Printf("=== DATABASE CLEAR COMPLETE ===")
+	
 	c.JSON(http.StatusOK, gin.H{
 		"message": fmt.Sprintf("Successfully cleared %d payment records", rowsAffected),
 		"cleared": rowsAffected,
+		"pre_deletion_audit": audit,
+		"post_deletion_verification": verification,
 	})
 }
 
@@ -348,6 +389,184 @@ func (h *UploadHandler) GetDatabaseStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+// auditDataBeforeDeletion performs comprehensive audit before deletion
+func (h *UploadHandler) auditDataBeforeDeletion() map[string]interface{} {
+	audit := make(map[string]interface{})
+	
+	// Total record count
+	var totalRecords int
+	h.db.QueryRow("SELECT COUNT(*) FROM payments").Scan(&totalRecords)
+	audit["total_records"] = totalRecords
+	log.Printf("AUDIT: Total records before deletion: %d", totalRecords)
+	
+	// Check for December 2025 phantom data
+	var dec2025Count int
+	h.db.QueryRow("SELECT COUNT(*) FROM payments WHERE payment_date LIKE '%-12-2025%' OR payment_date LIKE '%2025-12-%'").Scan(&dec2025Count)
+	audit["december_2025_records"] = dec2025Count
+	if dec2025Count > 0 {
+		log.Printf("⚠️  AUDIT ALERT: Found %d December 2025 phantom records!", dec2025Count)
+		
+		// Get sample of phantom records
+		rows, err := h.db.Query("SELECT payment_date, amount, currency FROM payments WHERE payment_date LIKE '%-12-2025%' OR payment_date LIKE '%2025-12-%' LIMIT 5")
+		if err == nil {
+			defer rows.Close()
+			var samples []map[string]interface{}
+			for rows.Next() {
+				var date string
+				var amount float64
+				var currency string
+				rows.Scan(&date, &amount, &currency)
+				samples = append(samples, map[string]interface{}{
+					"date": date, "amount": amount, "currency": currency,
+				})
+				log.Printf("PHANTOM SAMPLE: %s, %.2f %s", date, amount, currency)
+			}
+			audit["december_2025_samples"] = samples
+		}
+	}
+	
+	// Check for future dates (beyond 6 months)
+	var futureCount int
+	h.db.QueryRow("SELECT COUNT(*) FROM payments WHERE payment_date > date('now', '+6 months')").Scan(&futureCount)
+	audit["future_date_records"] = futureCount
+	if futureCount > 0 {
+		log.Printf("⚠️  AUDIT: Found %d records with future dates!", futureCount)
+	}
+	
+	// Date range analysis
+	var minDate, maxDate string
+	h.db.QueryRow("SELECT MIN(payment_date), MAX(payment_date) FROM payments").Scan(&minDate, &maxDate)
+	audit["date_range"] = map[string]string{"min": minDate, "max": maxDate}
+	log.Printf("AUDIT: Date range: %s to %s", minDate, maxDate)
+	
+	// Month distribution
+	monthQuery := `SELECT strftime('%Y-%m', payment_date) as month, COUNT(*) as count FROM payments GROUP BY month ORDER BY month`
+	rows, err := h.db.Query(monthQuery)
+	if err == nil {
+		defer rows.Close()
+		monthDist := make(map[string]int)
+		for rows.Next() {
+			var month string
+			var count int
+			rows.Scan(&month, &count)
+			monthDist[month] = count
+			log.Printf("AUDIT: %s: %d records", month, count)
+		}
+		audit["month_distribution"] = monthDist
+	}
+	
+	return audit
+}
+
+// verifyDatabaseClear verifies the database is completely clear
+func (h *UploadHandler) verifyDatabaseClear() map[string]interface{} {
+	verification := make(map[string]interface{})
+	
+	// Check total count
+	var totalRecords int
+	h.db.QueryRow("SELECT COUNT(*) FROM payments").Scan(&totalRecords)
+	verification["remaining_records"] = totalRecords
+	
+	isClean := totalRecords == 0
+	verification["is_clean"] = isClean
+	
+	if isClean {
+		log.Printf("✅ VERIFICATION PASSED: Database is completely clean")
+	} else {
+		log.Printf("❌ VERIFICATION FAILED: %d records remain in database!", totalRecords)
+		
+		// Get sample of remaining records
+		rows, err := h.db.Query("SELECT payment_date, amount, currency FROM payments LIMIT 5")
+		if err == nil {
+			defer rows.Close()
+			var samples []map[string]interface{}
+			for rows.Next() {
+				var date string
+				var amount float64
+				var currency string
+				rows.Scan(&date, &amount, &currency)
+				samples = append(samples, map[string]interface{}{
+					"date": date, "amount": amount, "currency": currency,
+				})
+				log.Printf("REMAINING RECORD: %s, %.2f %s", date, amount, currency)
+			}
+			verification["remaining_samples"] = samples
+		}
+	}
+	
+	return verification
+}
+
+// AuditReportGeneration audits report generation for data integrity
+func (h *UploadHandler) AuditReportGeneration(c *gin.Context) {
+	log.Printf("=== REPORT GENERATION AUDIT ===")
+	
+	// Get request parameters
+	year := c.Query("year")
+	month := c.Query("month")
+	week := c.Query("week")
+	
+	audit := make(map[string]interface{})
+	audit["request_params"] = map[string]string{
+		"year": year, "month": month, "week": week,
+	}
+	
+	// Audit data used for report
+	var recordCount int
+	var query string
+	var args []interface{}
+	
+	if month != "" && year != "" {
+		// Monthly report audit
+		query = "SELECT COUNT(*) FROM payments WHERE strftime('%Y', payment_date) = ? AND strftime('%m', payment_date) = ?"
+		args = []interface{}{year, month}
+		audit["report_type"] = "monthly"
+	} else if week != "" && year != "" {
+		// Weekly report audit  
+		query = "SELECT COUNT(*) FROM payments WHERE strftime('%Y', payment_date) = ? AND strftime('%W', payment_date) = ?"
+		args = []interface{}{year, week}
+		audit["report_type"] = "weekly"
+	} else {
+		audit["report_type"] = "invalid"
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid report parameters", "audit": audit})
+		return
+	}
+	
+	h.db.QueryRow(query, args...).Scan(&recordCount)
+	audit["matching_records"] = recordCount
+	
+	log.Printf("AUDIT: %s report for %s/%s uses %d records", audit["report_type"], year, month, recordCount)
+	
+	// Check for phantom December 2025 data in results
+	if month == "12" && year == "2025" {
+		log.Printf("🚨 CRITICAL AUDIT ALERT: Request for December 2025 report detected!")
+		audit["phantom_alert"] = "December 2025 report requested - investigating data source"
+		
+		// Deep audit of December 2025 data
+		phantomQuery := "SELECT payment_date, amount, currency, raw_data FROM payments WHERE strftime('%Y', payment_date) = '2025' AND strftime('%m', payment_date) = '12'"
+		rows, err := h.db.Query(phantomQuery)
+		if err == nil {
+			defer rows.Close()
+			var phantomRecords []map[string]interface{}
+			for rows.Next() {
+				var date, currency, rawData string
+				var amount float64
+				rows.Scan(&date, &amount, &currency, &rawData)
+				phantomRecords = append(phantomRecords, map[string]interface{}{
+					"date": date, "amount": amount, "currency": currency, "raw_data": rawData,
+				})
+				log.Printf("PHANTOM RECORD FOUND: %s, %.2f %s, raw: %s", date, amount, currency, rawData)
+			}
+			audit["phantom_records"] = phantomRecords
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"audit": audit,
+		"message": "Report generation audit completed",
+	})
 }
 
 // GetRawPaymentInfo returns detailed information about raw payment processing

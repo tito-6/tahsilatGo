@@ -32,6 +32,12 @@ func GetExchangeRate(paymentDate time.Time, currency string) (float64, error) {
 		return 1.0, nil
 	}
 
+	// If the payment date is in the future, use the latest available rate (today or last business day)
+	currentDate := time.Now()
+	if paymentDate.After(currentDate) {
+		paymentDate = currentDate
+	}
+
 	cacheKey := fmt.Sprintf("%s_%s", paymentDate.Format("2006-01-02"), currency)
 
 	// Check cache first
@@ -42,14 +48,14 @@ func GetExchangeRate(paymentDate time.Time, currency string) (float64, error) {
 	}
 	cacheMux.RUnlock()
 
-	// Get previous business day
-	prevDay := getPreviousBusinessDay(paymentDate)
+	// Get previous business day (or current if it's a business day)
+	targetDate := getLatestBusinessDay(paymentDate)
 
 	// Try to fetch rate from TCMB
-	rate, err := fetchTCMBRate(prevDay, currency)
+	rate, err := fetchTCMBRate(targetDate, currency)
 	if err != nil {
-		// If failed, try going back more days
-		rate, err = tryPreviousDays(prevDay, currency, 7)
+		// If failed, try going back more days (up to 30 days to handle holidays)
+		rate, err = tryPreviousDays(targetDate, currency, 30)
 		if err != nil {
 			return 0, fmt.Errorf("could not fetch exchange rate for %s on %s: %v", currency, paymentDate.Format("2006-01-02"), err)
 		}
@@ -102,6 +108,17 @@ func fetchTCMBRate(date time.Time, currency string) (float64, error) {
 	return 0, fmt.Errorf("currency %s not found in TCMB data", currency)
 }
 
+// getLatestBusinessDay returns the current date if it's a business day, otherwise the previous business day
+func getLatestBusinessDay(date time.Time) time.Time {
+	// If it's already a business day, return it
+	if date.Weekday() != time.Saturday && date.Weekday() != time.Sunday {
+		return date
+	}
+	
+	// Otherwise get the previous business day
+	return getPreviousBusinessDay(date)
+}
+
 // getPreviousBusinessDay returns the previous business day (excluding weekends)
 func getPreviousBusinessDay(date time.Time) time.Time {
 	prevDay := date.AddDate(0, 0, -1)
@@ -127,6 +144,9 @@ func tryPreviousDays(startDate time.Time, currency string, maxDays int) (float64
 		if err == nil {
 			return rate, nil
 		}
+		
+		// Log the attempt for debugging
+		fmt.Printf("Failed to get rate for %s on %s: %v\n", currency, date.Format("2006-01-02"), err)
 	}
 
 	return 0, fmt.Errorf("could not find exchange rate for %s in the last %d business days", currency, maxDays)

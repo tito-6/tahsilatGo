@@ -129,9 +129,9 @@ func ValidatePayment(payment *models.PaymentRecord) []string {
 		errors = append(errors, "Proje tanımlanamadı")
 	}
 
-	// Date must be reasonable
-	if payment.PaymentDate.After(time.Now().AddDate(0, 0, 1)) {
-		errors = append(errors, "Gelecek tarihli ödeme")
+	// Date must be reasonable - allow future dates but warn
+	if payment.PaymentDate.After(time.Now().AddDate(0, 6, 0)) { // More than 6 months in future
+		errors = append(errors, "Çok ileri tarihli ödeme (6 aydan fazla)")
 	}
 
 	// Date must not be too old (more than 10 years)
@@ -190,6 +190,10 @@ func (p *PaymentProcessor) ProcessBatch(rawPayments []models.RawPaymentData) ([]
 
 // parseImprovedDate parses date in multiple formats including Excel serial dates
 func parseImprovedDate(dateStr string) (time.Time, error) {
+	// Clean up the date string
+	dateStr = strings.TrimSpace(dateStr)
+	log.Printf("Parsing date string: '%s'", dateStr)
+	
 	// First, try to parse as Excel serial date (number)
 	if floatVal, err := strconv.ParseFloat(dateStr, 64); err == nil {
 		// Excel serial date: days since January 1, 1900
@@ -218,20 +222,93 @@ func parseImprovedDate(dateStr string) (time.Time, error) {
 		return date, nil
 	}
 	
-	// Try DD/MM/YYYY format
-	if t, err := time.Parse("02/01/2006", dateStr); err == nil {
+	// === NEW: HANDLE "DD Month YYYY" FORMAT (like "31 January 2025") ===
+	if strings.Contains(dateStr, " ") && !strings.Contains(dateStr, "/") && !strings.Contains(dateStr, "-") {
+		// Try "DD Month YYYY" format (like your imported data)
+		monthFormats := []string{
+			"02 January 2006",   // DD Month YYYY (English month names)
+			"2 January 2006",    // D Month YYYY (single digit day)
+		}
+		
+		for _, format := range monthFormats {
+			if t, err := time.Parse(format, dateStr); err == nil {
+				// --- CRITICAL VALIDATION FOR "DD Month YYYY" FORMAT ---
+				futureCutoff := time.Now().AddDate(0, 6, 0) // 6 months from now
+				if t.After(futureCutoff) {
+					log.Printf("🚨 HIGH WARNING: Parsed date '%s' (%s) is too far in future (cutoff: %s). REJECTING!", 
+						t.Format("2006-01-02"), dateStr, futureCutoff.Format("2006-01-02"))
+					return time.Time{}, fmt.Errorf("date '%s' is too far in future (beyond %s)", dateStr, futureCutoff.Format("2006-01-02"))
+				}
+
+				// Check if date is suspiciously in December 2025
+				if t.Year() == 2025 && t.Month() == time.December {
+					log.Printf("🔥 DECEMBER 2025 ALERT: Date '%s' parsed as December 2025 - REJECTING!", dateStr)
+					return time.Time{}, fmt.Errorf("december 2025 dates are not allowed: %s", dateStr)
+				}
+
+				log.Printf("✅ Parsed date '%s' using DD Month YYYY format -> %s", dateStr, t.Format("2006-01-02"))
+				return t, nil
+			}
+		}
+	}
+	
+	// === STRICT DD/MM/YYYY WITH VALIDATION ===
+	if strings.Contains(dateStr, "/") {
+		const expectedLayout = "02/01/2006" // DD/MM/YYYY
+		
+		t, err := time.Parse(expectedLayout, dateStr)
+		if err != nil {
+			log.Printf("ERROR: Failed to parse date string '%s' with DD/MM/YYYY format: %v", dateStr, err)
+			return time.Time{}, fmt.Errorf("invalid date format for '%s': %w", dateStr, err)
+		}
+
+		// --- CRITICAL VALIDATION STEP ---
+		// Check for sanity: if parsed date is far in future, likely format error
+		futureCutoff := time.Now().AddDate(0, 6, 0) // 6 months from now
+		if t.After(futureCutoff) {
+			log.Printf("🚨 HIGH WARNING: Parsed date '%s' (%s) is too far in future (cutoff: %s). REJECTING!", 
+				t.Format("2006-01-02"), dateStr, futureCutoff.Format("2006-01-02"))
+			return time.Time{}, fmt.Errorf("date '%s' is too far in future (beyond %s)", dateStr, futureCutoff.Format("2006-01-02"))
+		}
+
+		// Check if date is suspiciously in December 2025
+		if t.Year() == 2025 && t.Month() == time.December {
+			log.Printf("🔥 DECEMBER 2025 ALERT: Date '%s' parsed as December 2025 - REJECTING!", dateStr)
+			return time.Time{}, fmt.Errorf("december 2025 dates are not allowed: %s", dateStr)
+		}
+
+		log.Printf("✅ Parsed date '%s' using DD/MM/YYYY -> %s", dateStr, t.Format("2006-01-02"))
 		return t, nil
 	}
-
-	// Try DD-MM-YYYY format
-	if t, err := time.Parse("02-01-2006", dateStr); err == nil {
-		return t, nil
+	// === END STRICT DD/MM/YYYY ===
+	
+	// List of other date formats to try (with validation)
+	dateFormats := []string{
+		"2-1-2006",       // D-M-YYYY
+		"02-01-2006",     // DD-MM-YYYY
+		"2006-01-02",     // YYYY-MM-DD (ISO format)
+		"2.1.2006",       // D.M.YYYY
+		"02.01.2006",     // DD.MM.YYYY (German/Turkish format)
+	}
+	
+	for _, format := range dateFormats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			// Apply same validation to all date formats
+			futureCutoff := time.Now().AddDate(0, 6, 0) // 6 months from now
+			if t.After(futureCutoff) {
+				log.Printf("🚨 WARNING: Date '%s' is too far in future, rejecting", dateStr)
+				continue // Try next format
+			}
+			
+			if t.Year() == 2025 && t.Month() == time.December {
+				log.Printf("🔥 DECEMBER 2025 ALERT: Rejecting December 2025 date '%s'", dateStr)
+				continue // Try next format
+			}
+			
+			log.Printf("✅ Parsed date '%s' using format '%s' -> %s", dateStr, format, t.Format("2006-01-02"))
+			return t, nil
+		}
 	}
 
-	// Try YYYY-MM-DD format
-	if t, err := time.Parse("2006-01-02", dateStr); err == nil {
-		return t, nil
-	}
-
-	return time.Time{}, fmt.Errorf("invalid date format: %s", dateStr)
+	return time.Time{}, fmt.Errorf("invalid date format: %s (supported formats: DD/MM/YYYY or DD Month YYYY)", dateStr)
 }

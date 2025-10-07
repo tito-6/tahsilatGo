@@ -56,6 +56,19 @@ export interface MonthlyReport {
   month: string;
   project_summary: ProjectTotal;
   location_summary: Record<string, LocationTotal>;
+  daily_totals: Record<string, number>; // date string -> USD amount
+  payment_methods: Record<string, PaymentMethodTotal>; // payment method breakdown
+  mkm_payment_methods: Record<string, PaymentMethodTotal>; // MKM project payment methods
+  msm_payment_methods: Record<string, PaymentMethodTotal>; // MSM project payment methods
+}
+
+export interface YearlyReport {
+  year: number;
+  project_summary: ProjectTotal;
+  location_summary: Record<string, LocationTotal>;
+  payment_methods: Record<string, PaymentMethodTotal>; // payment method breakdown
+  mkm_payment_methods: Record<string, PaymentMethodTotal>; // MKM project payment methods
+  msm_payment_methods: Record<string, PaymentMethodTotal>; // MSM project payment methods
 }
 
 export interface UploadRequest {

@@ -52,6 +52,15 @@ export const formatAmountTL = (amount: number): string => {
   return `₺${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+// Format amounts without currency symbols for Excel export
+export const formatAmountUSDPlain = (amount: number): string => {
+  return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+export const formatAmountTLPlain = (amount: number): string => {
+  return amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 // Number formatting utilities
 export const formatNumber = (num: number): string => {
   return num.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

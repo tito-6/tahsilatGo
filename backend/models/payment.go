@@ -29,17 +29,19 @@ type PaymentRecord struct {
 	AmountUSD     float64   `json:"amount_usd" db:"amount_usd"`       // Calculated
 	ExchangeRate  float64   `json:"exchange_rate" db:"exchange_rate"` // Used rate
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	RawData       string    `json:"raw_data" db:"raw_data"`           // Original raw data for audit
 }
 
 // WeeklyReport represents a weekly report structure
 type WeeklyReport struct {
 	StartDate       time.Time                     `json:"start_date"`
 	EndDate         time.Time                     `json:"end_date"`
+	WeekNumber      string                        `json:"week_number"`
 	CustomerSummary map[string]float64            `json:"customer_summary"`
 	PaymentMethods  map[string]PaymentMethodTotal `json:"payment_methods"`
 	ProjectSummary  ProjectTotal                  `json:"project_summary"`
 	LocationSummary map[string]LocationTotal      `json:"location_summary"`
-	Payments []PaymentRecord `json:"payments"`
+	Payments        []PaymentRecord               `json:"payments"`
 }
 
 // PaymentMethodTotal represents totals by payment method
@@ -49,7 +51,7 @@ type PaymentMethodTotal struct {
 	TotalUSD float64 `json:"total_usd"` // Grand total in USD (TL converted + USD)
 }
 
-// ProjectTotal represents totals by project
+// ProjectTotal represents project-based totals
 type ProjectTotal struct {
 	MKM float64 `json:"mkm"`
 	MSM float64 `json:"msm"`
@@ -67,6 +69,20 @@ type MonthlyReport struct {
 	Month           time.Time                `json:"month"`
 	ProjectSummary  ProjectTotal             `json:"project_summary"`
 	LocationSummary map[string]LocationTotal `json:"location_summary"`
+	DailyTotals     map[string]float64       `json:"daily_totals"` // date string -> USD amount
+	PaymentMethods  map[string]PaymentMethodTotal `json:"payment_methods"` // payment method breakdown
+	MKMPaymentMethods map[string]PaymentMethodTotal `json:"mkm_payment_methods"` // MKM project payment methods
+	MSMPaymentMethods map[string]PaymentMethodTotal `json:"msm_payment_methods"` // MSM project payment methods
+}
+
+// YearlyReport represents yearly aggregated payment data
+type YearlyReport struct {
+	Year              int                          `json:"year"`
+	ProjectSummary    ProjectTotal                 `json:"project_summary"`
+	LocationSummary   map[string]LocationTotal     `json:"location_summary"`
+	PaymentMethods    map[string]PaymentMethodTotal `json:"payment_methods"` // payment method breakdown
+	MKMPaymentMethods map[string]PaymentMethodTotal `json:"mkm_payment_methods"` // MKM project payment methods
+	MSMPaymentMethods map[string]PaymentMethodTotal `json:"msm_payment_methods"` // MSM project payment methods
 }
 
 // UploadRequest represents the request structure for file upload
@@ -124,3 +140,19 @@ const (
 	LocationBanka       = "BANKA HAVALESİ"
 	LocationCek         = "ÇEK"
 )
+
+// Payment represents a payment record for backend yearly report handler compatibility
+type Payment struct {
+	ID            int       `json:"id" db:"id"`
+	CustomerName  string    `json:"customer_name" db:"customer_name"`
+	Amount        float64   `json:"amount" db:"amount"`
+	Currency      string    `json:"currency" db:"currency"`
+	PaymentMethod string    `json:"payment_method" db:"payment_method"`
+	PaymentDate   time.Time `json:"payment_date" db:"payment_date"`
+	AccountName   string    `json:"account_name" db:"account_name"`
+	Project       string    `json:"project" db:"project"`
+	Location      string    `json:"location" db:"location"`
+	AmountUSD     float64   `json:"amount_usd" db:"amount_usd"`
+	ExchangeRate  float64   `json:"exchange_rate" db:"exchange_rate"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+}

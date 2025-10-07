@@ -254,7 +254,7 @@ func (h *ExportHandler) writeWeeklyReportToPDF(pdf *gofpdf.Fpdf, report models.W
 
 // getAllPayments retrieves all payments from the database
 func (h *ExportHandler) getAllPayments() ([]models.PaymentRecord, error) {
-	query := `SELECT * FROM payments ORDER BY payment_date`
+	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments ORDER BY payment_date`
 	rows, err := h.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -277,6 +277,7 @@ func (h *ExportHandler) getAllPayments() ([]models.PaymentRecord, error) {
 			&payment.AmountUSD,
 			&payment.ExchangeRate,
 			&payment.CreatedAt,
+			&payment.RawData,
 		)
 		if err != nil {
 			return nil, err
