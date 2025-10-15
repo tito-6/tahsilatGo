@@ -1,14 +1,12 @@
-# Railway Configuration
-# This file helps Railway understand how to deploy both services
+# Railway Configuration for Go + React App
 
-# Backend service (Go)
-[backend]
-source = "backend"
-build = "go build -o main ."
-start = "./main"
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
 
-# Frontend service (React)
-[frontend]
-source = "frontend"
-build = "npm install && npm run build"
-start = "npx serve -s build -p $PORT"
+[deploy]
+startCommand = "./main"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
