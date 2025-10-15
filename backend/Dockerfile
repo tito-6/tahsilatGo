@@ -1,17 +1,17 @@
-# Backend Dockerfile
+# Backend Dockerfile - Build from project root
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Copy go modules
-COPY go.mod go.sum ./
+# Copy go modules from backend directory
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-# Copy only backend source files (exclude debug files)
-COPY handlers/ ./handlers/
-COPY models/ ./models/
-COPY services/ ./services/
-COPY main.go ./
+# Copy backend source files
+COPY backend/handlers/ ./handlers/
+COPY backend/models/ ./models/
+COPY backend/services/ ./services/
+COPY backend/main.go ./
 
 # Build the application
 RUN go build -ldflags="-w -s" -o main .
