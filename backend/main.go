@@ -43,9 +43,12 @@ func main() {
 		api.GET("/reports", uploadHandler.GetReports)
 		api.GET("/reports/yearly/:year", uploadHandler.GetYearlyReport) // Add yearly report endpoint
 		api.DELETE("/payments", uploadHandler.ClearAllPayments) // Add clear endpoint
+		api.DELETE("/payments/:id", uploadHandler.DeletePayment) // Add individual payment delete endpoint
+		api.DELETE("/payments/date-range", uploadHandler.DeletePaymentsByDateRange) // Add date range delete endpoint
 		api.GET("/stats", uploadHandler.GetDatabaseStats)       // Add stats endpoint
 		api.GET("/audit/report", uploadHandler.AuditReportGeneration) // Add report audit endpoint
 		api.GET("/export/excel", exportHandler.ExportExcel)
+		api.GET("/export/yearly/excel/:year", exportHandler.ExportYearlyExcel) // Add yearly Excel export
 		api.GET("/export/pdf", exportHandler.ExportPDF)
 	}
 

@@ -7,42 +7,38 @@ import (
 // PaymentMethodClassifier classifies payment methods based on raw data
 type PaymentMethodClassifier struct{}
 
-// Classify determines payment method from tahsilat sekli and hesap adi
+// Classify determines payment method ONLY from tahsilat sekli column
 func (p *PaymentMethodClassifier) Classify(tahsilatSekli string, hesapAdi string) string {
-	// Handle multiple payment types in one field
-	// Example: "Vadeli Ödeme, Vadeli Ödeme, Vadeli Ödeme"
-
-	tahsilatLower := strings.ToLower(tahsilatSekli)
-	hesapLower := strings.ToLower(hesapAdi)
+	// Payment method should ONLY be determined by Tahsilat Şekli column
+	// Hesap Adı should NOT affect payment method classification
+	
+	tahsilatLower := strings.ToLower(strings.TrimSpace(tahsilatSekli))
 
 	// Check for Çek (Check)
 	if strings.Contains(tahsilatLower, "çek") {
 		return "Çek"
 	}
 
-	// Check for Bank Transfer
-	if strings.Contains(hesapLower, "yapi kredi") ||
-		strings.Contains(hesapLower, "banka") ||
+	// Check for Bank Transfer/Wire Transfer
+	if strings.Contains(tahsilatLower, "banka havalesi") ||
 		strings.Contains(tahsilatLower, "havale") {
 		return "Banka Havalesi"
 	}
 
-	// Check for Cash (Kasa means cash box/register)
-	if strings.Contains(hesapLower, "kasa") {
+	// Check for Cash payments
+	if strings.Contains(tahsilatLower, "nakit") ||
+		strings.Contains(tahsilatLower, "kasa") {
 		return "Nakit"
 	}
 
-	// Default based on common patterns
-	if strings.Contains(tahsilatLower, "vadeli") ||
-		strings.Contains(tahsilatLower, "kdv") {
-		// Check account type for final classification
-		if strings.Contains(hesapLower, "kasa") {
-			return "Nakit"
-		}
+	// Handle common payment terms
+	if strings.Contains(tahsilatLower, "vadeli") {
+		// Vadeli payments are typically bank transfers in this context
 		return "Banka Havalesi"
 	}
 
-	return "Nakit" // Default fallback
+	// Default fallback for unknown payment types
+	return "Nakit"
 }
 
 // LocationClassifier classifies locations based on account name

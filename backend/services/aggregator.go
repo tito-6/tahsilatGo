@@ -152,9 +152,9 @@ func aggregateWeek(payments []models.PaymentRecord) models.WeeklyReport {
 			if payment.Currency == "TL" {
 				method.TL += payment.Amount
 			}
-			// USD column: Add all non-TL payments (already converted to USD)
-			if payment.Currency != "TL" {
-				method.USD += payment.AmountUSD
+			// USD column: Only add raw amount if original currency is USD
+			if payment.Currency == "USD" {
+				method.USD += payment.Amount
 			}
 			// Total USD: All payments converted to USD (this gives us the grand total)
 			method.TotalUSD += payment.AmountUSD
@@ -374,6 +374,30 @@ func GenerateYearlyReport(payments []models.Payment, year int) models.YearlyRepo
 		MKMPaymentMethods: make(map[string]models.PaymentMethodTotal),
 		MSMPaymentMethods: make(map[string]models.PaymentMethodTotal),
 	}
+
+	// Convert Payment slice to PaymentRecord slice for monthly report generation
+	var paymentRecords []models.PaymentRecord
+	for _, payment := range payments {
+		paymentRecord := models.PaymentRecord{
+			ID:            payment.ID,
+			CustomerName:  payment.CustomerName,
+			PaymentDate:   payment.PaymentDate,
+			Amount:        payment.Amount,
+			Currency:      payment.Currency,
+			PaymentMethod: payment.PaymentMethod,
+			Location:      payment.Location,
+			Project:       payment.Project,
+			AccountName:   payment.AccountName,
+			AmountUSD:     payment.AmountUSD,
+			ExchangeRate:  payment.ExchangeRate,
+			CreatedAt:     payment.CreatedAt,
+		}
+		paymentRecords = append(paymentRecords, paymentRecord)
+	}
+
+	// Generate monthly reports for the year
+	monthlyReports := GenerateMonthlyReports(paymentRecords)
+	report.MonthlyReports = monthlyReports
 
 	// Initialize location summaries
 	locations := []string{"BANKA HAVALESİ", "CARŞI", "KUYUMCUKENT", "OFİS", "ÇEK"}

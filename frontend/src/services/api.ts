@@ -71,9 +71,23 @@ export const paymentAPI = {
     return response.data;
   },
 
+  // Delete individual payment
+  deletePayment: async (paymentId: number): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>(`/payments/${paymentId}`);
+    return response.data;
+  },
+
   // Export Excel
   exportExcel: async (): Promise<Blob> => {
     const response = await api.get('/export/excel', {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  // Export Yearly Excel
+  exportYearlyExcel: async (year: number): Promise<Blob> => {
+    const response = await api.get(`/export/yearly/excel/${year}`, {
       responseType: 'blob',
     });
     return response.data;

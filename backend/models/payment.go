@@ -83,6 +83,7 @@ type YearlyReport struct {
 	PaymentMethods    map[string]PaymentMethodTotal `json:"payment_methods"` // payment method breakdown
 	MKMPaymentMethods map[string]PaymentMethodTotal `json:"mkm_payment_methods"` // MKM project payment methods
 	MSMPaymentMethods map[string]PaymentMethodTotal `json:"msm_payment_methods"` // MSM project payment methods
+	MonthlyReports    []MonthlyReport              `json:"monthly_reports"` // monthly breakdown
 }
 
 // UploadRequest represents the request structure for file upload

@@ -33,8 +33,10 @@ func (p *PaymentProcessor) Process(raw models.RawPaymentData) (*models.PaymentRe
 		return nil, fmt.Errorf("invalid date format '%s': %v", raw.Tarih, err)
 	}
 
-	// Classify payment components
+	// Classify payment components with debugging
+	fmt.Printf("CLASSIFICATION DEBUG - TahsilatSekli: '%s', HesapAdi: '%s'\n", raw.TahsilatSekli, raw.HesapAdi)
 	paymentMethod := p.methodClassifier.Classify(raw.TahsilatSekli, raw.HesapAdi)
+	fmt.Printf("CLASSIFICATION RESULT: '%s'\n", paymentMethod)
 	location := p.locationClassifier.Classify(raw.HesapAdi)
 	project := p.projectClassifier.Classify(raw.ProjeAdi)
 

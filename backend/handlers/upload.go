@@ -260,15 +260,78 @@ func (h *UploadHandler) GetYearlyReport(c *gin.Context) {
 		return
 	}
 
-	// Query payments for the specific year
-	query := `
-	SELECT id, customer_name, amount, currency, payment_method, payment_date, 
-	       account_name, project, location, amount_usd, exchange_rate, created_at
-	FROM payments 
-	WHERE strftime('%Y', payment_date) = ?
-	ORDER BY payment_date ASC`
+	// Debug: First check if there are any payments at all
+	var totalCount int
+	countQuery := `SELECT COUNT(*) FROM payments`
+	err = h.db.QueryRow(countQuery).Scan(&totalCount)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting payments: " + err.Error()})
+		return
+	}
 
-	rows, err := h.db.Query(query, yearStr)
+	// Debug: Check payments for the year with different approaches
+	var yearCount int
+	yearCountQuery := `SELECT COUNT(*) FROM payments WHERE strftime('%Y', payment_date) = ?`
+	err = h.db.QueryRow(yearCountQuery, yearStr).Scan(&yearCount)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting year payments: " + err.Error()})
+		return
+	}
+
+	// Debug: Try alternative year filtering
+	var altYearCount int
+	altYearQuery := `SELECT COUNT(*) FROM payments WHERE payment_date >= ? AND payment_date < ?`
+	startYear := fmt.Sprintf("%d-01-01", year)
+	endYear := fmt.Sprintf("%d-01-01", year+1)
+	err = h.db.QueryRow(altYearQuery, startYear, endYear).Scan(&altYearCount)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error counting alt year payments: " + err.Error()})
+		return
+	}
+
+	// If no payments found, return debug info
+	if yearCount == 0 && altYearCount == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"year": year,
+			"debug": gin.H{
+				"total_payments": totalCount,
+				"year_payments_strftime": yearCount,
+				"year_payments_range": altYearCount,
+				"query_year": yearStr,
+				"start_date": startYear,
+				"end_date": endYear,
+			},
+			"project_summary": models.ProjectTotal{MKM: 0, MSM: 0},
+			"location_summary": make(map[string]models.LocationTotal),
+			"payment_methods": make(map[string]models.PaymentMethodTotal),
+			"mkm_payment_methods": make(map[string]models.PaymentMethodTotal),
+			"msm_payment_methods": make(map[string]models.PaymentMethodTotal),
+		})
+		return
+	}
+
+	// Use the alternative query if strftime doesn't work
+	var query string
+	var queryParams []interface{}
+	if yearCount > 0 {
+		query = `
+		SELECT id, customer_name, amount, currency, payment_method, payment_date, 
+		       account_name, project, location, amount_usd, exchange_rate, created_at, raw_data
+		FROM payments 
+		WHERE strftime('%Y', payment_date) = ?
+		ORDER BY payment_date ASC`
+		queryParams = []interface{}{yearStr}
+	} else {
+		query = `
+		SELECT id, customer_name, amount, currency, payment_method, payment_date, 
+		       account_name, project, location, amount_usd, exchange_rate, created_at, raw_data
+		FROM payments 
+		WHERE payment_date >= ? AND payment_date < ?
+		ORDER BY payment_date ASC`
+		queryParams = []interface{}{startYear, endYear}
+	}
+
+	rows, err := h.db.Query(query, queryParams...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -278,6 +341,7 @@ func (h *UploadHandler) GetYearlyReport(c *gin.Context) {
 	var payments []models.Payment
 	for rows.Next() {
 		var payment models.Payment
+		var rawData string
 		err := rows.Scan(
 			&payment.ID,
 			&payment.CustomerName,
@@ -291,6 +355,7 @@ func (h *UploadHandler) GetYearlyReport(c *gin.Context) {
 			&payment.AmountUSD,
 			&payment.ExchangeRate,
 			&payment.CreatedAt,
+			&rawData,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -303,6 +368,76 @@ func (h *UploadHandler) GetYearlyReport(c *gin.Context) {
 	yearlyReport := services.GenerateYearlyReport(payments, year)
 
 	c.JSON(http.StatusOK, yearlyReport)
+}
+
+// DeletePayment removes a specific payment record by ID
+func (h *UploadHandler) DeletePayment(c *gin.Context) {
+	paymentID := c.Param("id")
+	
+	if paymentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Payment ID is required"})
+		return
+	}
+	
+	// First, get the payment details for audit purposes
+	var payment models.PaymentRecord
+	selectQuery := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments WHERE id = ?`
+	err := h.db.QueryRow(selectQuery, paymentID).Scan(
+		&payment.ID,
+		&payment.CustomerName,
+		&payment.PaymentDate,
+		&payment.Amount,
+		&payment.Currency,
+		&payment.PaymentMethod,
+		&payment.Location,
+		&payment.Project,
+		&payment.AccountName,
+		&payment.AmountUSD,
+		&payment.ExchangeRate,
+		&payment.CreatedAt,
+		&payment.RawData,
+	)
+	
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+			return
+		}
+		log.Printf("Error retrieving payment for deletion: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	
+	// Delete the payment
+	deleteQuery := `DELETE FROM payments WHERE id = ?`
+	result, err := h.db.Exec(deleteQuery, paymentID)
+	if err != nil {
+		log.Printf("Error deleting payment %s: %v", paymentID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	}
+	
+	log.Printf("Deleted payment ID %s: %s - %s - %.2f %s", 
+		paymentID, payment.CustomerName, payment.PaymentDate.Format("2006-01-02"), payment.Amount, payment.Currency)
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Payment deleted successfully",
+		"deleted_payment": gin.H{
+			"id": payment.ID,
+			"customer_name": payment.CustomerName,
+			"payment_date": payment.PaymentDate.Format("2006-01-02"),
+			"amount": payment.Amount,
+			"currency": payment.Currency,
+			"payment_method": payment.PaymentMethod,
+			"project": payment.Project,
+		},
+	})
 }
 
 // ClearAllPayments removes all payment records with comprehensive audit and verification
@@ -334,6 +469,149 @@ func (h *UploadHandler) ClearAllPayments(c *gin.Context) {
 		"cleared": rowsAffected,
 		"pre_deletion_audit": audit,
 		"post_deletion_verification": verification,
+	})
+}
+
+// DeletePaymentsByDateRange removes payment records within a specific date range
+func (h *UploadHandler) DeletePaymentsByDateRange(c *gin.Context) {
+	// Get date parameters from query string
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+	
+	if startDate == "" || endDate == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Both start_date and end_date parameters are required (format: YYYY-MM-DD)",
+		})
+		return
+	}
+	
+	// Validate date format
+	_, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid start_date format. Use YYYY-MM-DD",
+		})
+		return
+	}
+	
+	_, err = time.Parse("2006-01-02", endDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid end_date format. Use YYYY-MM-DD",
+		})
+		return
+	}
+	
+	log.Printf("=== DATE RANGE DELETION AUDIT ===")
+	log.Printf("Deleting payments from %s to %s", startDate, endDate)
+	
+	// Step 1: Count records to be deleted
+	countQuery := `SELECT COUNT(*) FROM payments WHERE payment_date LIKE ? || '%' AND payment_date LIKE ? || '%'`
+	var recordsToDelete int
+	err = h.db.QueryRow(countQuery, startDate, endDate).Scan(&recordsToDelete)
+	if err != nil {
+		log.Printf("Error counting records to delete: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	
+	// If start and end dates are the same, use a single date filter
+	if startDate == endDate {
+		countQuery = `SELECT COUNT(*) FROM payments WHERE payment_date LIKE ? || '%'`
+		err = h.db.QueryRow(countQuery, startDate).Scan(&recordsToDelete)
+		if err != nil {
+			log.Printf("Error counting records to delete: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		// For date range, we need a more complex query
+		countQuery = `SELECT COUNT(*) FROM payments WHERE substr(payment_date, 1, 10) >= ? AND substr(payment_date, 1, 10) <= ?`
+		err = h.db.QueryRow(countQuery, startDate, endDate).Scan(&recordsToDelete)
+		if err != nil {
+			log.Printf("Error counting records to delete: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	
+	if recordsToDelete == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "No payments found in the specified date range",
+			"deleted": 0,
+			"date_range": gin.H{
+				"start_date": startDate,
+				"end_date": endDate,
+			},
+		})
+		return
+	}
+	
+	// Step 2: Get details of records to be deleted for audit
+	var auditQuery string
+	var auditRows *sql.Rows
+	
+	if startDate == endDate {
+		auditQuery = `SELECT customer_name, payment_method, amount, currency, payment_date, project 
+		               FROM payments WHERE payment_date LIKE ? || '%'`
+		auditRows, err = h.db.Query(auditQuery, startDate)
+	} else {
+		auditQuery = `SELECT customer_name, payment_method, amount, currency, payment_date, project 
+		               FROM payments WHERE substr(payment_date, 1, 10) >= ? AND substr(payment_date, 1, 10) <= ?`
+		auditRows, err = h.db.Query(auditQuery, startDate, endDate)
+	}
+	
+	if err != nil {
+		log.Printf("Error getting records for audit: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer auditRows.Close()
+	
+	var auditRecords []map[string]interface{}
+	for auditRows.Next() {
+		var customerName, paymentMethod, currency, paymentDate, project string
+		var amount float64
+		auditRows.Scan(&customerName, &paymentMethod, &amount, &currency, &paymentDate, &project)
+		auditRecords = append(auditRecords, map[string]interface{}{
+			"customer_name": customerName,
+			"payment_method": paymentMethod,
+			"amount": amount,
+			"currency": currency,
+			"payment_date": paymentDate,
+			"project": project,
+		})
+	}
+	
+	// Step 3: Delete records
+	var deleteQuery string
+	var result sql.Result
+	
+	if startDate == endDate {
+		deleteQuery = `DELETE FROM payments WHERE payment_date LIKE ? || '%'`
+		result, err = h.db.Exec(deleteQuery, startDate)
+	} else {
+		deleteQuery = `DELETE FROM payments WHERE substr(payment_date, 1, 10) >= ? AND substr(payment_date, 1, 10) <= ?`
+		result, err = h.db.Exec(deleteQuery, startDate, endDate)
+	}
+	if err != nil {
+		log.Printf("Error deleting payments: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Deleted %d payment records from %s to %s", rowsAffected, startDate, endDate)
+	log.Printf("=== DATE RANGE DELETION COMPLETE ===")
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": fmt.Sprintf("Successfully deleted %d payment records from %s to %s", rowsAffected, startDate, endDate),
+		"deleted": rowsAffected,
+		"date_range": gin.H{
+			"start_date": startDate,
+			"end_date": endDate,
+		},
+		"deleted_records": auditRecords,
 	})
 }
 

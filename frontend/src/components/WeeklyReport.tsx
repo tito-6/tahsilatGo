@@ -25,6 +25,108 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber }
         </p>
       </div>
 
+      {/* Daily Collections Summary Table */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Günlük Tahsilat Özeti (USD) - Aylık Görünüm
+        </h3>
+        
+        <div className="overflow-x-auto">
+          {(() => {
+            // Get the month and year from the week start date
+            const startDate = new Date(report.start_date);
+            const year = startDate.getFullYear();
+            const month = startDate.getMonth();
+            
+            // Calculate daily totals from payments data
+            const dailyTotals: Record<string, number> = {};
+            report.payments.forEach(payment => {
+              const dateKey = payment.payment_date.split('T')[0]; // Get YYYY-MM-DD part
+              dailyTotals[dateKey] = (dailyTotals[dateKey] || 0) + payment.amount_usd;
+            });
+            
+            // Get the number of days in the month
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            // Create calendar grid (7 columns x multiple rows)
+            const weeks = [];
+            let currentWeek = [];
+            
+            // Fill the calendar
+            for (let day = 1; day <= daysInMonth; day++) {
+              const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const amount = dailyTotals[dateKey] || 0;
+              const monthDate = new Date(year, month, day);
+              
+              currentWeek.push({
+                day,
+                dateKey,
+                amount,
+                displayDate: `${String(day).padStart(2, '0')}-${monthDate.toLocaleDateString('tr-TR', { month: 'short' })}-${String(year).slice(-2)}`
+              });
+              
+              // If we have 7 days or reached the end of month, complete the week
+              if (currentWeek.length === 7 || day === daysInMonth) {
+                // Fill remaining slots with empty cells if needed
+                while (currentWeek.length < 7) {
+                  currentWeek.push(null);
+                }
+                weeks.push([...currentWeek]);
+                currentWeek = [];
+              }
+            }
+            
+            // Calculate grand total for the month
+            const grandTotal = Object.values(dailyTotals).reduce((sum, amount) => sum + amount, 0);
+            
+            return (
+              <table className="min-w-full divide-y divide-gray-200 border border-gray-300">
+                <tbody className="bg-white">
+                  {weeks.map((week, weekIndex) => (
+                    <React.Fragment key={weekIndex}>
+                      <tr>
+                        {week.map((dayData, dayIndex) => (
+                          <td key={dayIndex} className="px-4 py-3 text-center text-sm border border-gray-300 min-w-[120px]">
+                            {dayData ? (
+                              <div>
+                                <div className="font-medium text-gray-900">{dayData.displayDate}</div>
+                                <div className="text-gray-600 mt-1">
+                                  {dayData.amount > 0 ? formatAmountUSDPlain(dayData.amount) : '-'}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-12"></div>
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 text-center text-sm font-semibold bg-gray-100 border border-gray-300">
+                          <div className="text-gray-900">HAFTALIK TOPLAM</div>
+                          <div className="mt-1">
+                            {week.filter(d => d && d.amount > 0).reduce((sum, d) => sum + (d?.amount || 0), 0) > 0 
+                              ? formatAmountUSDPlain(week.filter(d => d && d.amount > 0).reduce((sum, d) => sum + (d?.amount || 0), 0))
+                              : '-'
+                            }
+                          </div>
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  ))}
+                  {/* Grand Total Row */}
+                  <tr className="bg-gray-200">
+                    <td colSpan={7} className="px-4 py-4 text-center text-sm font-bold text-gray-900 border border-gray-300">
+                      Aylık Genel Toplam
+                    </td>
+                    <td className="px-4 py-4 text-center text-sm font-bold text-gray-900 border border-gray-300">
+                      {formatAmountUSDPlain(grandTotal)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            );
+          })()}
+        </div>
+      </div>
+
       {/* Customer Summary Table */}
       <div className="mb-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -162,6 +264,19 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber }
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">{formatAmountUSDPlain(totals.total)}</td>
                 </tr>
               ))}
+              {/* Project Totals Row */}
+              <tr className="bg-gray-100 font-semibold border-t-2 border-gray-400">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border border-gray-300">TOPLAM</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border border-gray-300">
+                  {formatAmountUSDPlain(Object.values(report.location_summary).reduce((sum, loc) => sum + loc.mkm, 0))}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border border-gray-300">
+                  {formatAmountUSDPlain(Object.values(report.location_summary).reduce((sum, loc) => sum + loc.msm, 0))}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 border border-gray-300">
+                  {formatAmountUSDPlain(Object.values(report.location_summary).reduce((sum, loc) => sum + loc.total, 0))}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>

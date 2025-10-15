@@ -229,6 +229,12 @@ export class ExcelParser {
   }
 
   private static parseRow(row: ExcelRow, rowNumber: number): RawPaymentData | null {
+    // Debug: Show all available columns for the first few rows
+    if (rowNumber <= 5) {
+      console.log(`Row ${rowNumber} available columns:`, Object.keys(row));
+      console.log(`Row ${rowNumber} data:`, row);
+    }
+
     // Find the "Ödenen Tutar" column dynamically (it has Σ: in name or exact match)
     const odenenTutarKey = Object.keys(row).find(key => 
       key.startsWith('Ödenen Tutar') || key.includes('Ödenen Tutar') || key === 'Ödenen Tutar'
@@ -239,11 +245,54 @@ export class ExcelParser {
       throw new Error('Ödenen Tutar column not found. Available columns: ' + Object.keys(row).join(', '));
     }
 
-    // Validate required fields
+    // Find required fields with flexible matching (trim spaces and case-insensitive)
+    const findColumn = (searchFor: string): string | null => {
+      const keys = Object.keys(row);
+      
+      // First try exact match
+      if (keys.includes(searchFor)) {
+        return searchFor;
+      }
+      
+      // Then try trimmed and case-insensitive match
+      const found = keys.find(key => 
+        key.trim().toLowerCase() === searchFor.trim().toLowerCase()
+      );
+      
+      if (found) {
+        return found;
+      }
+      
+      // Try partial match for common variations
+      if (searchFor === 'Proje Adı') {
+        const projeMatch = keys.find(key => 
+          key.toLowerCase().includes('proje') || 
+          key.toLowerCase().includes('project')
+        );
+        if (projeMatch) {
+          console.log(`Found project column: "${projeMatch}" for search "${searchFor}"`);
+          return projeMatch;
+        }
+      }
+      
+      return null;
+    };
+
+    // Validate required fields with flexible matching
     const requiredFields = ['Müşteri Adı Soyadı', 'Tarih', 'Tahsilat Şekli', 'Hesap Adı', 'Ödenen Döviz', 'Proje Adı'];
+    const fieldMap: { [key: string]: string } = {};
+    
     for (const field of requiredFields) {
-      if (!row[field]) {
-        throw new Error(`Missing required field: ${field}`);
+      const foundColumn = findColumn(field);
+      if (!foundColumn) {
+        console.log(`Missing field "${field}". Available columns:`, Object.keys(row));
+        throw new Error(`Missing required field: ${field}. Available columns: ${Object.keys(row).join(', ')}`);
+      }
+      fieldMap[field] = foundColumn;
+      
+      // Check if the value exists and is not empty
+      if (!row[foundColumn] && row[foundColumn] !== 0) {
+        throw new Error(`Missing required field: ${field} (column: ${foundColumn})`);
       }
     }
 

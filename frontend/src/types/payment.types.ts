@@ -69,6 +69,7 @@ export interface YearlyReport {
   payment_methods: Record<string, PaymentMethodTotal>; // payment method breakdown
   mkm_payment_methods: Record<string, PaymentMethodTotal>; // MKM project payment methods
   msm_payment_methods: Record<string, PaymentMethodTotal>; // MSM project payment methods
+  monthly_reports?: MonthlyReport[];
 }
 
 export interface UploadRequest {

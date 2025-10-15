@@ -3,6 +3,7 @@ import { FileUpload } from './components/FileUpload';
 import { WeeklyReport } from './components/WeeklyReport';
 import { MonthlyReport } from './components/MonthlyReport';
 import { DebugPanel } from './components/DebugPanel';
+import { AllPayments } from './components/AllPayments';
 import YearlyReportComponent from './components/YearlyReport';
 import { paymentAPI } from './services/api';
 import { WeeklyReport as WeeklyReportType, MonthlyReport as MonthlyReportType, UploadResponse, YearlyReport } from './types/payment.types';
@@ -14,9 +15,16 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'reports' | 'yearly' | 'debug'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'reports' | 'yearly' | 'payments' | 'debug'>('upload');
   const [selectedMonth, setSelectedMonth] = useState<string | 'all'>('all');
   const [reportType, setReportType] = useState<'weekly' | 'monthly'>('weekly');
+  
+  // Date range deletion states
+  const [showDateRangeDelete, setShowDateRangeDelete] = useState(false);
+  const [deleteStartDate, setDeleteStartDate] = useState('');
+  const [deleteEndDate, setDeleteEndDate] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const currentYear = new Date().getFullYear();
 
   // Clear localStorage and sessionStorage on app load
@@ -81,60 +89,23 @@ function App() {
 
   useEffect(() => {
     if (activeTab === 'yearly') {
-      // Aggregate yearly report from loaded monthly reports
-      const year = currentYear;
-      const mkmTotals = { tl: 0, usd: 0, total_usd: 0 };
-      const msmTotals = { tl: 0, usd: 0, total_usd: 0 };
-      const paymentMethods = { 'Banka Havalesi': { tl: 0, usd: 0, total_usd: 0 }, 'Nakit': { tl: 0, usd: 0, total_usd: 0 }, 'Çek': { tl: 0, usd: 0, total_usd: 0 } };
-      const mkmPaymentMethods = { 'Banka Havalesi': { tl: 0, usd: 0, total_usd: 0 }, 'Nakit': { tl: 0, usd: 0, total_usd: 0 }, 'Çek': { tl: 0, usd: 0, total_usd: 0 } };
-      const msmPaymentMethods = { 'Banka Havalesi': { tl: 0, usd: 0, total_usd: 0 }, 'Nakit': { tl: 0, usd: 0, total_usd: 0 }, 'Çek': { tl: 0, usd: 0, total_usd: 0 } };
-      const locationSummary: Record<string, { mkm: number; msm: number; total: number }> = {
-        'BANKA HAVALESİ': { mkm: 0, msm: 0, total: 0 },
-        'CARŞI': { mkm: 0, msm: 0, total: 0 },
-        'KUYUMCUKENT': { mkm: 0, msm: 0, total: 0 },
-        'OFİS': { mkm: 0, msm: 0, total: 0 },
-        'ÇEK': { mkm: 0, msm: 0, total: 0 },
-      };
-      let mkmUSD = 0, msmUSD = 0;
-      monthlyReports.forEach(report => {
-        const reportYear = new Date(report.month).getFullYear();
-        if (reportYear === year) {
-          mkmUSD += report.project_summary.mkm;
-          msmUSD += report.project_summary.msm;
-          // Aggregate payment methods
-          ['Banka Havalesi', 'Nakit', 'Çek'].forEach(method => {
-            const mkm = report.mkm_payment_methods?.[method] || { tl: 0, usd: 0, total_usd: 0 };
-            const msm = report.msm_payment_methods?.[method] || { tl: 0, usd: 0, total_usd: 0 };
-            (mkmPaymentMethods[method as keyof typeof mkmPaymentMethods].tl += mkm.tl);
-            (mkmPaymentMethods[method as keyof typeof mkmPaymentMethods].usd += mkm.usd);
-            (mkmPaymentMethods[method as keyof typeof mkmPaymentMethods].total_usd += mkm.total_usd);
-            (msmPaymentMethods[method as keyof typeof msmPaymentMethods].tl += msm.tl);
-            (msmPaymentMethods[method as keyof typeof msmPaymentMethods].usd += msm.usd);
-            (msmPaymentMethods[method as keyof typeof msmPaymentMethods].total_usd += msm.total_usd);
-            (paymentMethods[method as keyof typeof paymentMethods].tl += mkm.tl + msm.tl);
-            (paymentMethods[method as keyof typeof paymentMethods].usd += mkm.usd + msm.usd);
-            (paymentMethods[method as keyof typeof paymentMethods].total_usd += mkm.total_usd + msm.total_usd);
-          });
-          // Aggregate location summary
-          Object.entries(report.location_summary).forEach(([loc, summary]) => {
-            if (locationSummary[loc]) {
-              locationSummary[loc].mkm += summary.mkm;
-              locationSummary[loc].msm += summary.msm;
-              locationSummary[loc].total += summary.total;
-            }
-          });
+      // Fetch yearly report from backend API
+      const fetchYearlyReport = async () => {
+        try {
+          setIsLoading(true);
+          const response = await paymentAPI.getYearlyReport(currentYear);
+          setYearlyReport(response);
+        } catch (error) {
+          console.error('Failed to load yearly report:', error);
+          setError('Yıllık rapor yüklenemedi');
+        } finally {
+          setIsLoading(false);
         }
-      });
-      setYearlyReport({
-        year,
-        project_summary: { mkm: mkmUSD, msm: msmUSD },
-        location_summary: locationSummary,
-        payment_methods: paymentMethods,
-        mkm_payment_methods: mkmPaymentMethods,
-        msm_payment_methods: msmPaymentMethods,
-      });
+      };
+      
+      fetchYearlyReport();
     }
-  }, [activeTab, currentYear, monthlyReports]);
+  }, [activeTab, currentYear]);
 
   const loadReports = async () => {
     try {
@@ -167,6 +138,66 @@ function App() {
         console.error('Clear data error:', err);
       } finally {
         setIsLoading(false);
+      }
+    }
+  };
+
+  const handleDeleteByDateRange = async () => {
+    if (!deleteStartDate || !deleteEndDate) {
+      setError('Başlangıç ve bitiş tarihleri gereklidir');
+      return;
+    }
+
+    if (deleteStartDate > deleteEndDate) {
+      setError('Başlangıç tarihi bitiş tarihinden sonra olamaz');
+      return;
+    }
+
+    // Calculate the difference in days
+    const start = new Date(deleteStartDate);
+    const end = new Date(deleteEndDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    const confirmMessage = deleteStartDate === deleteEndDate 
+      ? `${deleteStartDate} tarihindeki tüm ödeme verilerini silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!`
+      : `${deleteStartDate} ile ${deleteEndDate} arasındaki ${diffDays} günlük tüm ödeme verilerini silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!`;
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        setIsDeleting(true);
+        setError(null);
+        
+        const response = await fetch(`http://localhost:8080/api/payments/date-range?start_date=${deleteStartDate}&end_date=${deleteEndDate}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          throw new Error('Tarih aralığı silme işlemi başarısız');
+        }
+        
+        const result = await response.json();
+        const deletedCount = result.deleted || 0;
+        
+        if (deletedCount === 0) {
+          setSuccess(`Belirtilen tarih aralığında silinecek veri bulunamadı (${deleteStartDate} - ${deleteEndDate})`);
+        } else {
+          setSuccess(`${deletedCount} adet ödeme kaydı başarıyla silindi (${deleteStartDate} - ${deleteEndDate})`);
+        }
+        
+        // Reload reports after deletion
+        loadReports();
+        
+        // Reset form
+        setDeleteStartDate('');
+        setDeleteEndDate('');
+        setShowDateRangeDelete(false);
+        
+      } catch (err) {
+        setError('Tarih aralığı silinirken hata oluştu: ' + (err as Error).message);
+        console.error('Delete by date range error:', err);
+      } finally {
+        setIsDeleting(false);
       }
     }
   };
@@ -211,37 +242,121 @@ function App() {
           <div className="flex space-x-4">
             <button
               onClick={() => setActiveTab('upload')}
-              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'upload' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'upload' ? 'bg-blue-600 text-white' : 'bg-white text-black border border-gray-300 hover:bg-gray-50'}`}
             >
               Dosya Yükle
             </button>
             <button
               onClick={() => setActiveTab('reports')}
-              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'reports' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'reports' ? 'bg-blue-600 text-white' : 'bg-white text-black border border-gray-300 hover:bg-gray-50'}`}
             >
               Raporlar
             </button>
             <button
               onClick={() => setActiveTab('yearly')}
-              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'yearly' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'yearly' ? 'bg-blue-600 text-white' : 'bg-white text-black border border-gray-300 hover:bg-gray-50'}`}
             >
               Yıllık Raporlar
             </button>
             <button
+              onClick={() => setActiveTab('payments')}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'payments' ? 'bg-blue-600 text-white' : 'bg-white text-black border border-gray-300 hover:bg-gray-50'}`}
+            >
+              Tüm Ödemeler
+            </button>
+            <button
               onClick={() => setActiveTab('debug')}
-              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'debug' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}`}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'debug' ? 'bg-blue-600 text-white' : 'bg-white text-black border border-gray-300 hover:bg-gray-50'}`}
             >
               Debug
             </button>
           </div>
-          <button
-            onClick={handleClearAllData}
-            disabled={isLoading}
-            className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Siliniyor...' : 'Tüm Verileri Sil'}
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setShowDateRangeDelete(!showDateRangeDelete)}
+              className="px-4 py-2 rounded-lg font-medium bg-orange-600 text-black hover:bg-orange-700"
+            >
+              Tarih Aralığı Sil
+            </button>
+            <button
+              onClick={handleClearAllData}
+              disabled={isLoading}
+              className="px-4 py-2 rounded-lg font-medium bg-red-600 text-black hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isLoading ? 'Siliniyor...' : 'Tüm Verileri Sil'}
+            </button>
+          </div>
         </div>
+
+        {/* Date Range Delete Panel */}
+        {showDateRangeDelete && (
+          <div className="mb-6 bg-white rounded-lg shadow-md p-6 border border-orange-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Tarih Aralığına Göre Veri Silme</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div>
+                <label htmlFor="start-date" className="block text-sm font-medium text-black mb-2">
+                  Başlangıç Tarihi
+                </label>
+                <input
+                  id="start-date"
+                  type="date"
+                  value={deleteStartDate}
+                  onChange={(e) => setDeleteStartDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="end-date" className="block text-sm font-medium text-black mb-2">
+                  Bitiş Tarihi
+                </label>
+                <input
+                  id="end-date"
+                  type="date"
+                  value={deleteEndDate}
+                  onChange={(e) => setDeleteEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+              <div className="flex flex-col space-y-2">
+                {/* Debug Info */}
+                <div className="text-xs text-black">
+                  <div>Başlangıç: {deleteStartDate || '(boş)'}</div>
+                  <div>Bitiş: {deleteEndDate || '(boş)'}</div>
+                  <div>Durum: {isDeleting ? 'Siliniyor' : 'Hazır'}</div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleDeleteByDateRange}
+                    disabled={isDeleting || !deleteStartDate || !deleteEndDate}
+                    className="px-4 py-2 rounded-lg font-medium bg-orange-600 text-black hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isDeleting ? 'Siliniyor...' : 'Sil'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDateRangeDelete(false);
+                      setDeleteStartDate('');
+                      setDeleteEndDate('');
+                    }}
+                    className="px-4 py-2 rounded-lg font-medium bg-gray-300 text-black hover:bg-gray-400"
+                  >
+                    İptal
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-md">
+              <p className="text-sm text-orange-800">
+                <strong>Uyarı:</strong> Bu işlem seçilen tarih aralığındaki tüm ödeme kayıtlarını kalıcı olarak silecektir. Bu işlem geri alınamaz.
+              </p>
+              {deleteStartDate && deleteEndDate && (
+                <p className="text-sm text-orange-900 font-medium mt-2">
+                  Silinecek tarih aralığı: {deleteStartDate} - {deleteEndDate}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Alert Messages */}
         {error && (
@@ -317,7 +432,7 @@ function App() {
                         className={`px-4 py-2 text-sm font-medium rounded-l-lg ${
                           reportType === 'weekly'
                             ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                            : 'bg-gray-200 text-black hover:bg-gray-300'
                         }`}
                       >
                         Haftalık Raporlar
@@ -327,7 +442,7 @@ function App() {
                         className={`px-4 py-2 text-sm font-medium rounded-r-lg border-l ${
                           reportType === 'monthly'
                             ? 'bg-blue-600 text-white'
-                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                            : 'bg-gray-200 text-black hover:bg-gray-300'
                         }`}
                       >
                         Aylık Raporlar
@@ -336,13 +451,13 @@ function App() {
 
                     {/* Month Filter */}
                     <div className="flex items-center space-x-3">
-                      <label className="text-sm font-medium text-gray-700">
+                      <label className="text-sm font-medium text-black">
                         Ay Filtresi:
                       </label>
                       <select
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="border border-gray-300 rounded-md px-3 py-2 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
                         <option value="all">Tüm Aylar</option>
                         {getAvailableMonths().map(month => (
@@ -354,7 +469,7 @@ function App() {
                     </div>
 
                     {/* Report Summary */}
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-gray-800">
                       {reportType === 'weekly' ? (
                         <span>
                           {getFilteredWeeklyReports().length} haftalık rapor
@@ -373,7 +488,7 @@ function App() {
                 {/* Weekly Reports */}
                 {reportType === 'weekly' && (
                   <div className="mb-8">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                    <h2 className="text-2xl font-bold text-black mb-6">
                       Haftalık Raporlar
                       {selectedMonth !== 'all' && ` - ${formatMonthDisplay(selectedMonth)}`}
                     </h2>
@@ -396,7 +511,7 @@ function App() {
                 {/* Monthly Reports */}
                 {reportType === 'monthly' && monthlyReports && monthlyReports.length > 0 && (
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                    <h2 className="text-2xl font-bold text-black mb-6">
                       Aylık Raporlar
                       {selectedMonth !== 'all' && ` - ${formatMonthDisplay(selectedMonth)}`}
                     </h2>
@@ -417,6 +532,10 @@ function App() {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'payments' && (
+          <AllPayments />
         )}
 
         {activeTab === 'yearly' && yearlyReport && (
