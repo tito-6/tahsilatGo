@@ -25,18 +25,32 @@ func main() {
 
 	// Configure CORS
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:3001"}
+	config.AllowOrigins = []string{
+		"http://localhost:3000", 
+		"http://localhost:3001", 
+		"https://*.railway.app", // Allow Railway domains
+		"https://*.vercel.app",  // Allow Vercel domains
+	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
+	config.AllowCredentials = true
 	r.Use(cors.New(config))
 
 	// Initialize handlers
 	uploadHandler := handlers.NewUploadHandler(db)
 	exportHandler := handlers.NewExportHandler(db)
 
-	// API routes
-	api := r.Group("/api")
+	// Public routes (no authentication)
+	public := r.Group("/api/public")
 	{
+		public.POST("/login", handlers.LoginHandler)
+	}
+
+	// Protected API routes (require authentication)
+	api := r.Group("/api")
+	api.Use(handlers.AuthMiddleware()) // Apply authentication middleware
+	{
+		api.GET("/auth/check", handlers.CheckAuthHandler)
 		api.POST("/upload", uploadHandler.UploadPayments)
 		api.POST("/analyze", uploadHandler.GetRawPaymentInfo)     // Add analyze endpoint
 		api.GET("/payments", uploadHandler.GetPayments)

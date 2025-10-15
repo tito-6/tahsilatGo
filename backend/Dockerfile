@@ -5,7 +5,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
+# Copy only necessary files, exclude debug files
+COPY handlers/ ./handlers/
+COPY models/ ./models/
+COPY services/ ./services/
+COPY main.go ./
 RUN go build -o main .
 
 FROM alpine:latest

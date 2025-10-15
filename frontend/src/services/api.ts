@@ -17,6 +17,28 @@ const api = axios.create({
   },
 });
 
+// Authentication storage
+let authCredentials: { username: string; password: string } | null = null;
+
+// Set auth credentials
+export const setAuthCredentials = (username: string, password: string) => {
+  authCredentials = { username, password };
+  // Set basic auth header for all requests
+  const authString = btoa(`${username}:${password}`);
+  api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
+};
+
+// Clear auth credentials
+export const clearAuthCredentials = () => {
+  authCredentials = null;
+  delete api.defaults.headers.common['Authorization'];
+};
+
+// Check if user is authenticated
+export const isAuthenticated = () => {
+  return authCredentials !== null;
+};
+
 // Request interceptor for logging
 api.interceptors.request.use(
   (config) => {
@@ -104,6 +126,28 @@ export const paymentAPI = {
   // Health check
   healthCheck: async (): Promise<{ status: string }> => {
     const response = await api.get('/health');
+    return response.data;
+  },
+};
+
+// Authentication API
+export const authAPI = {
+  // Login
+  login: async (username: string, password: string): Promise<{ success: boolean; message?: string; token?: string }> => {
+    try {
+      const response = await axios.post(`${API_BASE_URL.replace('/api', '')}/api/public/login`, {
+        username,
+        password,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || 'Login failed');
+    }
+  },
+
+  // Check authentication status
+  checkAuth: async (): Promise<{ authenticated: boolean; username?: string }> => {
+    const response = await api.get('/auth/check');
     return response.data;
   },
 };

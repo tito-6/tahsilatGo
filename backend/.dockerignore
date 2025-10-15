@@ -1,0 +1,33 @@
+# Debug files
+debug_excel.go
+debug_import.py
+*.exe
+test*.py
+analyze*.py
+verify*.py
+investigate*.py
+validate*.py
+
+# Temporary files
+*.log
+*.tmp
+
+# Test data
+test*.csv
+test*.xlsx
+sample-data.csv
+
+# Database files (will be created in container)
+*.db
+
+# JSON data files
+all_payments.json
+payments_data.json
+updated_reports.json
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
