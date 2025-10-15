@@ -112,8 +112,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, isLoading, error }) => {
               <strong>Varsayılan Giriş Bilgileri:</strong>
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              Kullanıcı Adı: <code className="bg-gray-100 px-1 rounded">admin</code><br/>
-              Şifre: <code className="bg-gray-100 px-1 rounded">tahsilat2025</code>
+              Kullanıcı Adı: <code className="bg-gray-100 px-1 rounded">AhmetTahsilat2025*/</code><br/>
+              Şifre: <code className="bg-gray-100 px-1 rounded">1a124abf53c24bf1</code>
             </div>
           </div>
         </form>

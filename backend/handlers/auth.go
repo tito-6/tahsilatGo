@@ -18,7 +18,7 @@ func AuthMiddleware() gin.HandlerFunc {
 func getUsername() string {
 	username := os.Getenv("ADMIN_USERNAME")
 	if username == "" {
-		return "admin" // Default username
+		return "AhmetTahsilat2025*/" // Default username
 	}
 	return username
 }
@@ -27,7 +27,7 @@ func getUsername() string {
 func getPassword() string {
 	password := os.Getenv("ADMIN_PASSWORD")
 	if password == "" {
-		return "tahsilat2025" // Default password
+		return "1a124abf53c24bf1" // Default password
 	}
 	return password
 }
