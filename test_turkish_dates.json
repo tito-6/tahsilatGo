@@ -1,0 +1,38 @@
+[
+  {
+    "MusteriAdiSoyadi": "Ahmet Test",
+    "Tarih": "15/ocak/2024",
+    "OdenenTutar": 5000,
+    "OdenenDoviz": "TL",
+    "TahsilatSekli": "Banka Havalesi",
+    "HesapAdi": "İş Bankası MKM",
+    "ProjeAdi": "MKM"
+  },
+  {
+    "MusteriAdiSoyadi": "Fatma Test",
+    "Tarih": "28/şubat/2024",
+    "OdenenTutar": 1200,
+    "OdenenDoviz": "USD",
+    "TahsilatSekli": "Çek",
+    "HesapAdi": "Garanti MSM",
+    "ProjeAdi": "MSM"
+  },
+  {
+    "MusteriAdiSoyadi": "English Test",
+    "Tarih": "10 March 2024",
+    "OdenenTutar": 2500,
+    "OdenenDoviz": "EUR",
+    "TahsilatSekli": "Nakit",
+    "HesapAdi": "Cash Test",
+    "ProjeAdi": "MKM"
+  },
+  {
+    "MusteriAdiSoyadi": "Aralık Test",
+    "Tarih": "25/aralık/2024",
+    "OdenenTutar": 3000,
+    "OdenenDoviz": "TL",
+    "TahsilatSekli": "Banka Havalesi",
+    "HesapAdi": "Test Bank",
+    "ProjeAdi": "MSM"
+  }
+]

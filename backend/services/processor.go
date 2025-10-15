@@ -190,7 +190,7 @@ func (p *PaymentProcessor) ProcessBatch(rawPayments []models.RawPaymentData) ([]
 	return processedPayments, allErrors
 }
 
-// parseImprovedDate parses date in multiple formats including Excel serial dates
+// parseImprovedDate parses date in multiple formats including Excel serial dates and Turkish months
 func parseImprovedDate(dateStr string) (time.Time, error) {
 	// Clean up the date string
 	dateStr = strings.TrimSpace(dateStr)
@@ -224,7 +224,28 @@ func parseImprovedDate(dateStr string) (time.Time, error) {
 		return date, nil
 	}
 	
-	// === NEW: HANDLE "DD Month YYYY" FORMAT (like "31 January 2025") ===
+	// === NEW: HANDLE TURKISH MONTH FORMATS (DD/MonthName/YYYY) ===
+	if strings.Contains(dateStr, "/") && !isNumericDate(dateStr) {
+		// Handle Turkish month names like "02/ocak/2025", "25/aralık/2025"
+		if t, err := parseTurkishDate(dateStr); err == nil {
+			// Apply validation
+			futureCutoff := time.Now().AddDate(0, 6, 0) // 6 months from now
+			if t.After(futureCutoff) {
+				log.Printf("🚨 WARNING: Turkish date '%s' is too far in future, rejecting", dateStr)
+				return time.Time{}, fmt.Errorf("date '%s' is too far in future (beyond %s)", dateStr, futureCutoff.Format("2006-01-02"))
+			}
+			
+			if t.Year() == 2025 && t.Month() == time.December {
+				log.Printf("🔥 DECEMBER 2025 ALERT: Rejecting December 2025 Turkish date '%s'", dateStr)
+				return time.Time{}, fmt.Errorf("december 2025 dates are not allowed: %s", dateStr)
+			}
+			
+			log.Printf("✅ Parsed Turkish date '%s' -> %s", dateStr, t.Format("2006-01-02"))
+			return t, nil
+		}
+	}
+	
+	// === HANDLE "DD Month YYYY" FORMAT (like "31 January 2025") ===
 	if strings.Contains(dateStr, " ") && !strings.Contains(dateStr, "/") && !strings.Contains(dateStr, "-") {
 		// Try "DD Month YYYY" format (like your imported data)
 		monthFormats := []string{
@@ -312,5 +333,67 @@ func parseImprovedDate(dateStr string) (time.Time, error) {
 		}
 	}
 
-	return time.Time{}, fmt.Errorf("invalid date format: %s (supported formats: DD/MM/YYYY or DD Month YYYY)", dateStr)
+	return time.Time{}, fmt.Errorf("invalid date format: %s (supported formats: DD/MM/YYYY, DD/MonthName/YYYY, or DD Month YYYY)", dateStr)
+}
+
+// parseTurkishDate parses dates with Turkish month names like "02/ocak/2025"
+func parseTurkishDate(dateStr string) (time.Time, error) {
+	// Turkish month names mapping
+	turkishMonths := map[string]int{
+		"ocak":     1,  // January
+		"şubat":    2,  // February  
+		"mart":     3,  // March
+		"nisan":    4,  // April
+		"mayıs":    5,  // May
+		"haziran":  6,  // June
+		"temmuz":   7,  // July
+		"ağustos":  8,  // August
+		"eylül":    9,  // September
+		"ekim":     10, // October
+		"kasım":    11, // November
+		"aralık":   12, // December
+	}
+	
+	// Split by "/" - expect format: DD/MonthName/YYYY
+	parts := strings.Split(dateStr, "/")
+	if len(parts) != 3 {
+		return time.Time{}, fmt.Errorf("turkish date must be in DD/MonthName/YYYY format")
+	}
+	
+	// Parse day
+	day, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid day: %s", parts[0])
+	}
+	
+	// Parse Turkish month name
+	monthStr := strings.ToLower(strings.TrimSpace(parts[1]))
+	month, exists := turkishMonths[monthStr]
+	if !exists {
+		return time.Time{}, fmt.Errorf("unknown Turkish month: %s", parts[1])
+	}
+	
+	// Parse year
+	year, err := strconv.Atoi(strings.TrimSpace(parts[2]))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid year: %s", parts[2])
+	}
+	
+	// Create the time
+	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	
+	log.Printf("Parsed Turkish date: %s -> %s (day=%d, month=%s(%d), year=%d)", 
+		dateStr, t.Format("2006-01-02"), day, parts[1], month, year)
+	
+	return t, nil
+}
+
+// isNumericDate checks if a date string contains only numbers and separators
+func isNumericDate(dateStr string) bool {
+	for _, char := range dateStr {
+		if char != '/' && char != '-' && char != '.' && (char < '0' || char > '9') {
+			return false
+		}
+	}
+	return true
 }
