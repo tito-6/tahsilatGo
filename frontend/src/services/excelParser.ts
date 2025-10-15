@@ -387,13 +387,18 @@ export class ExcelParser {
     // Handle different date formats
     const dateStr = String(dateValue).trim();
     
-    // NEW: Handle "DD Month YYYY" format (like "31 January 2025")
+    // NEW: Handle "DD Month YYYY" format (like "31 January 2025" or "27 Haziran 2025")
     const monthNames = {
+      // English months
       'january': 0, 'february': 1, 'march': 2, 'april': 3, 'may': 4, 'june': 5,
-      'july': 6, 'august': 7, 'september': 8, 'october': 9, 'november': 10, 'december': 11
+      'july': 6, 'august': 7, 'september': 8, 'october': 9, 'november': 10, 'december': 11,
+      // Turkish months
+      'ocak': 0, 'şubat': 1, 'mart': 2, 'nisan': 3, 'mayıs': 4, 'haziran': 5,
+      'temmuz': 6, 'ağustos': 7, 'eylül': 8, 'ekim': 9, 'kasım': 10, 'aralık': 11
     };
     
-    const monthPattern = /^(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})$/i;
+    // Pattern for both English and Turkish months
+    const monthPattern = /^(\d{1,2})\s*[\/\-]\s*(january|february|march|april|may|june|july|august|september|october|november|december|ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık)\s*[\/\-]\s*(\d{4})$/i;
     const monthMatch = dateStr.match(monthPattern);
     if (monthMatch) {
       const day = parseInt(monthMatch[1], 10);
@@ -403,7 +408,7 @@ export class ExcelParser {
       if (monthNames.hasOwnProperty(monthName)) {
         const month = monthNames[monthName as keyof typeof monthNames];
         const date = new Date(year, month, day);
-        console.log(`✅ Parsed "DD Month YYYY" date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
+        console.log(`✅ Parsed Turkish/English month date: ${dateStr} -> ${date.toLocaleDateString('en-GB')}`);
         return date;
       }
     }
