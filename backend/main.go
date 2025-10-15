@@ -28,8 +28,9 @@ func main() {
 	config := cors.DefaultConfig()
 	config.AllowOrigins = []string{
 		"http://localhost:3000", 
-		"http://localhost:3001", 
-		"https://*.railway.app", // Allow Railway domains
+		"http://localhost:3001",
+		"https://tahsilatgo-production.up.railway.app", // Specific Railway domain
+		"https://*.railway.app", // Allow all Railway domains
 		"https://*.vercel.app",  // Allow Vercel domains
 	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}

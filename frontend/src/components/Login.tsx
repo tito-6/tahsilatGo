@@ -109,11 +109,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin, isLoading, error }) => {
 
           <div className="text-center">
             <div className="text-sm text-gray-600">
-              <strong>Varsayılan Giriş Bilgileri:</strong>
+              <strong>Yetkili personel için giriş yapınız</strong>
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              Kullanıcı Adı: <code className="bg-gray-100 px-1 rounded">AhmetTahsilat2025*/</code><br/>
-              Şifre: <code className="bg-gray-100 px-1 rounded">1a124abf53c24bf1</code>
+              Giriş bilgilerinizi sistem yöneticisinden temin ediniz.
             </div>
           </div>
         </form>
