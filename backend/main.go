@@ -66,6 +66,22 @@ func main() {
 		api.GET("/export/pdf", exportHandler.ExportPDF)
 	}
 
+	// Serve static files from React build
+	r.Static("/static", "../frontend/build/static")
+	r.StaticFile("/favicon.ico", "../frontend/build/favicon.ico")
+	r.StaticFile("/manifest.json", "../frontend/build/manifest.json")
+	r.StaticFile("/robots.txt", "../frontend/build/robots.txt")
+	
+	// Serve React app for all non-API routes
+	r.NoRoute(func(c *gin.Context) {
+		// If it's an API call that wasn't found, return 404
+		if gin.Mode() == gin.ReleaseMode {
+			c.File("../frontend/build/index.html")
+		} else {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Route not found"})
+		}
+	})
+
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

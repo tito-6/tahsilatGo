@@ -24,6 +24,9 @@ WORKDIR /root/
 # Copy the binary from builder stage
 COPY --from=builder /app/main .
 
+# Copy frontend build files
+COPY frontend/build/ ./frontend/build/
+
 # Create directory for SQLite database
 RUN mkdir -p /root/data
 
