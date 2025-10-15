@@ -1,0 +1,14 @@
+# Railway Configuration
+# This file helps Railway understand how to deploy both services
+
+# Backend service (Go)
+[backend]
+source = "backend"
+build = "go build -o main ."
+start = "./main"
+
+# Frontend service (React)
+[frontend]
+source = "frontend"
+build = "npm install && npm run build"
+start = "npx serve -s build -p $PORT"
