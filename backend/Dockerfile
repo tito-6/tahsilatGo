@@ -1,5 +1,25 @@
 # Backend Dockerfile - Build from project root
-FROM golang:1.23-alpine AS builder
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Copy frontend package files
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+WORKDIR /app/frontend
+
+# Install frontend dependencies
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/src ./src
+COPY frontend/public ./public
+COPY frontend/tsconfig.json ./
+
+# Build React app
+RUN npm run build
+
+# Go backend builder stage
+FROM golang:1.23-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -21,11 +41,11 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /root/
 
-# Copy the binary from builder stage
-COPY --from=builder /app/main .
+# Copy the binary from backend builder stage
+COPY --from=backend-builder /app/main .
 
-# Copy frontend build files
-COPY frontend/build/ ./frontend/build/
+# Copy frontend build files from frontend builder stage
+COPY --from=frontend-builder /app/frontend/build ./frontend/build/
 
 # Create directory for SQLite database
 RUN mkdir -p /root/data
