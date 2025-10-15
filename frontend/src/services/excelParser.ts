@@ -398,7 +398,7 @@ export class ExcelParser {
     };
     
     // Pattern for both English and Turkish months
-    const monthPattern = /^(\d{1,2})\s*[\/\-]\s*(january|february|march|april|may|june|july|august|september|october|november|december|ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık)\s*[\/\-]\s*(\d{4})$/i;
+    const monthPattern = /^(\d{1,2})\s*[/\-]\s*(january|february|march|april|may|june|july|august|september|october|november|december|ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık)\s*[/\-]\s*(\d{4})$/i;
     const monthMatch = dateStr.match(monthPattern);
     if (monthMatch) {
       const day = parseInt(monthMatch[1], 10);
