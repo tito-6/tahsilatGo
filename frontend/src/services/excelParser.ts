@@ -235,14 +235,20 @@ export class ExcelParser {
       console.log(`Row ${rowNumber} data:`, row);
     }
 
-    // Find the "Ödenen Tutar" column dynamically (it has Σ: in name or exact match)
-    const odenenTutarKey = Object.keys(row).find(key => 
-      key.startsWith('Ödenen Tutar') || key.includes('Ödenen Tutar') || key === 'Ödenen Tutar'
-    );
+    // Find the amount column dynamically - can be "Ödenen Tutar", "Ödenen tutar", "Alacak Tutarı", etc.
+    const odenenTutarKey = Object.keys(row).find(key => {
+      const lowerKey = key.toLowerCase();
+      return (
+        lowerKey.includes('ödenen tutar') || 
+        lowerKey.includes('alacak tutar') ||
+        lowerKey.includes('tutar') ||
+        lowerKey.includes('amount')
+      );
+    });
 
     if (!odenenTutarKey) {
       console.log('Available columns:', Object.keys(row));
-      throw new Error('Ödenen Tutar column not found. Available columns: ' + Object.keys(row).join(', '));
+      throw new Error('Amount column not found. Looking for columns containing: "ödenen tutar", "alacak tutar", "tutar", or "amount". Available columns: ' + Object.keys(row).join(', '));
     }
 
     // Find required fields with flexible matching (trim spaces and case-insensitive)
