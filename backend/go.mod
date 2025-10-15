@@ -1,12 +1,11 @@
 module tahsilat-raporu
 
-go 1.21
+go 1.23.0
 
 require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
 	github.com/jung-kurt/gofpdf v1.16.2
-	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/xuri/excelize/v2 v2.9.1
 	modernc.org/sqlite v1.29.0
 )
