@@ -17,12 +17,34 @@ const api = axios.create({
   },
 });
 
-// Authentication storage
+// Authentication storage with localStorage persistence
 let authCredentials: { username: string; password: string } | null = null;
+
+// Initialize credentials from localStorage on module load
+const initializeAuth = () => {
+  try {
+    const storedAuth = localStorage.getItem('authCredentials');
+    if (storedAuth) {
+      authCredentials = JSON.parse(storedAuth);
+      if (authCredentials) {
+        const authString = btoa(`${authCredentials.username}:${authCredentials.password}`);
+        api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to initialize auth from localStorage:', error);
+    localStorage.removeItem('authCredentials');
+  }
+};
+
+// Initialize auth on module load
+initializeAuth();
 
 // Set auth credentials
 export const setAuthCredentials = (username: string, password: string) => {
   authCredentials = { username, password };
+  // Store in localStorage
+  localStorage.setItem('authCredentials', JSON.stringify(authCredentials));
   // Set basic auth header for all requests
   const authString = btoa(`${username}:${password}`);
   api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
@@ -31,17 +53,23 @@ export const setAuthCredentials = (username: string, password: string) => {
 // Clear auth credentials
 export const clearAuthCredentials = () => {
   authCredentials = null;
+  localStorage.removeItem('authCredentials');
   delete api.defaults.headers.common['Authorization'];
 };
 
 // Check if user is authenticated
 export const isAuthenticated = () => {
-  return authCredentials !== null;
+  return authCredentials !== null && localStorage.getItem('authCredentials') !== null;
 };
 
-// Request interceptor for logging
+// Request interceptor for authentication and logging
 api.interceptors.request.use(
   (config) => {
+    // Ensure auth header is set if we have credentials
+    if (authCredentials && !config.headers.Authorization) {
+      const authString = btoa(`${authCredentials.username}:${authCredentials.password}`);
+      config.headers.Authorization = `Basic ${authString}`;
+    }
     console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
     return config;
   },
@@ -57,6 +85,14 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('API Error:', error.response?.data || error.message);
+    
+    // Handle 401 errors by clearing auth and forcing re-login
+    if (error.response?.status === 401) {
+      console.log('Authentication failed, clearing credentials');
+      clearAuthCredentials();
+      // You might want to dispatch an event or use a callback here to update UI state
+    }
+    
     return Promise.reject(error);
   }
 );

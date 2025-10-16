@@ -40,12 +40,16 @@ function App() {
     const checkAuth = async () => {
       if (isAuthenticated()) {
         try {
+          // Try to make an authenticated request to verify credentials still work
           await authAPI.checkAuth();
           setAuthenticated(true);
         } catch (error) {
+          console.log('Stored credentials invalid, clearing auth');
           clearAuthCredentials();
           setAuthenticated(false);
         }
+      } else {
+        setAuthenticated(false);
       }
       setAuthLoading(false);
     };
