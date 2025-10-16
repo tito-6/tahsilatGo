@@ -24,11 +24,13 @@ let authCredentials: { username: string; password: string } | null = null;
 const initializeAuth = () => {
   try {
     const storedAuth = localStorage.getItem('authCredentials');
+    console.log('Stored auth from localStorage:', storedAuth ? 'Found' : 'Not found');
     if (storedAuth) {
       authCredentials = JSON.parse(storedAuth);
       if (authCredentials) {
         const authString = btoa(`${authCredentials.username}:${authCredentials.password}`);
         api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
+        console.log('Auth credentials restored from localStorage');
       }
     }
   } catch (error) {
@@ -49,6 +51,7 @@ export const setAuthCredentials = (username: string, password: string) => {
   // Set basic auth header for all requests
   const authString = btoa(`${username}:${password}`);
   api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
+  console.log('Auth credentials set and stored in localStorage');
 };
 
 // Clear auth credentials
@@ -70,6 +73,11 @@ api.interceptors.request.use(
     if (authCredentials && !config.headers.Authorization) {
       const authString = btoa(`${authCredentials.username}:${authCredentials.password}`);
       config.headers.Authorization = `Basic ${authString}`;
+      console.log('Added auth header to request:', config.url);
+    } else if (config.headers.Authorization) {
+      console.log('Auth header already present for request:', config.url);
+    } else {
+      console.log('No auth credentials available for request:', config.url);
     }
     console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
     return config;
