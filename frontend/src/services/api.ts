@@ -39,6 +39,7 @@ const initializeAuth = () => {
 
 // Initialize auth on module load
 initializeAuth();
+console.log('API module loaded with auth persistence v1.1');
 
 // Set auth credentials
 export const setAuthCredentials = (username: string, password: string) => {
