@@ -207,6 +207,11 @@ func (h *UploadHandler) GetPayments(c *gin.Context) {
 
 // GetReports generates and returns weekly reports
 func (h *UploadHandler) GetReports(c *gin.Context) {
+	// Debug: log caller information
+	authHdr := c.GetHeader("Authorization")
+	remoteIP := c.ClientIP()
+	log.Printf("GetReports called from %s, Authorization present: %t", remoteIP, authHdr != "")
+
 	// Get all payments
 	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments ORDER BY payment_date`
 	rows, err := h.db.Query(query)
@@ -240,6 +245,8 @@ func (h *UploadHandler) GetReports(c *gin.Context) {
 		}
 		payments = append(payments, payment)
 	}
+
+	log.Printf("GetReports: found %d payments for reports generation", len(payments))
 
 	// Generate reports
 	weeklyReports := services.GenerateWeeklyReports(payments)

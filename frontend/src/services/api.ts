@@ -8,7 +8,7 @@ import {
   YearlyReport
 } from '../types/payment.types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -30,7 +30,7 @@ const initializeAuth = () => {
       if (authCredentials) {
         const authString = btoa(`${authCredentials.username}:${authCredentials.password}`);
         api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
-        console.log('Auth credentials restored from localStorage');
+        console.log('Auth credentials restored from localStorage', api.defaults.headers.common['Authorization']);
       }
     }
   } catch (error) {
@@ -51,8 +51,10 @@ export const setAuthCredentials = (username: string, password: string) => {
   // Set basic auth header for all requests
   const authString = btoa(`${username}:${password}`);
   api.defaults.headers.common['Authorization'] = `Basic ${authString}`;
-  console.log('Auth credentials set and stored in localStorage');
+  console.log('Auth credentials set and stored in localStorage', api.defaults.headers.common['Authorization']);
 };
+
+export const getAuthCredentials = () => authCredentials;
 
 // Clear auth credentials
 export const clearAuthCredentials = () => {
@@ -180,7 +182,7 @@ export const authAPI = {
   // Login
   login: async (username: string, password: string): Promise<{ success: boolean; message?: string; token?: string }> => {
     try {
-      const response = await axios.post(`${API_BASE_URL.replace('/api', '')}/api/public/login`, {
+      const response = await axios.post(`http://localhost:8080/api/public/login`, {
         username,
         password,
       });

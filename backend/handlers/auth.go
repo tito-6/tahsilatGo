@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"os"
 
@@ -43,6 +44,13 @@ func LoginHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
+
+	// Debug: log the received credentials and expected credentials
+	expectedUsername := getUsername()
+	expectedPassword := getPassword()
+	log.Printf("Login attempt - Received: username='%s', password='%s'", loginRequest.Username, loginRequest.Password)
+	log.Printf("Login attempt - Expected: username='%s', password='%s'", expectedUsername, expectedPassword)
+	log.Printf("Username match: %t, Password match: %t", loginRequest.Username == expectedUsername, loginRequest.Password == expectedPassword)
 
 	// Check credentials
 	if loginRequest.Username == getUsername() && loginRequest.Password == getPassword() {

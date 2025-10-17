@@ -7,6 +7,7 @@ import { AllPayments } from './components/AllPayments';
 import { Login } from './components/Login';
 import YearlyReportComponent from './components/YearlyReport';
 import { paymentAPI, authAPI, setAuthCredentials, clearAuthCredentials, isAuthenticated } from './services/api';
+import api from './services/api';
 import { WeeklyReport as WeeklyReportType, MonthlyReport as MonthlyReportType, UploadResponse, YearlyReport } from './types/payment.types';
 
 function App() {
@@ -63,8 +64,42 @@ function App() {
     
     try {
       await authAPI.login(credentials.username, credentials.password);
+      // Persist credentials and mark authenticated
       setAuthCredentials(credentials.username, credentials.password);
       setAuthenticated(true);
+
+      // Wait until axios default Authorization header is available (small race safety)
+      const waitForAuthHeader = (timeout = 2000) => {
+        return new Promise<boolean>((resolve) => {
+          const interval = 50;
+          let waited = 0;
+          const t = setInterval(() => {
+            // Try to read common header or top-level header
+            const hdr = (api.defaults.headers as any).common?.Authorization || (api.defaults.headers as any).Authorization;
+            if (hdr) {
+              clearInterval(t);
+              resolve(true);
+            }
+            waited += interval;
+            if (waited >= timeout) {
+              clearInterval(t);
+              resolve(false);
+            }
+          }, interval);
+        });
+      };
+
+      const headerReady = await waitForAuthHeader(2000);
+      console.log('Authorization header ready after login:', headerReady, (api.defaults.headers as any).common?.Authorization || (api.defaults.headers as any).Authorization);
+
+      // Load reports immediately after successful login
+      try {
+        await loadReports();
+        setActiveTab('reports');
+      } catch (loadErr) {
+        console.error('Error loading reports after login:', loadErr);
+      }
+      
     } catch (error: any) {
       setLoginError(error.message || 'Giriş başarısız');
     } finally {
@@ -82,11 +117,7 @@ function App() {
     setYearlyReport(null);
   };
 
-  // Clear localStorage and sessionStorage on app load
-  useEffect(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  }, []);
+  // Note: Removed localStorage.clear() to preserve authentication across refreshes
 
   // Get available months from reports
   const getAvailableMonths = () => {
@@ -139,8 +170,10 @@ function App() {
 
   // Load existing reports on component mount
   useEffect(() => {
-    loadReports();
-  }, []);
+    if (authenticated) {
+      loadReports();
+    }
+  }, [authenticated]);
 
   useEffect(() => {
     if (activeTab === 'yearly') {
@@ -163,16 +196,35 @@ function App() {
   }, [activeTab, currentYear]);
 
   const loadReports = async () => {
+    if (!authenticated) {
+      console.log('Not authenticated, skipping reports load');
+      return;
+    }
+    
     try {
       setIsLoading(true);
+      setError(null);
+      console.log('Loading reports...');
+      // Debug: log current Authorization header
+      try {
+        console.log('Current Authorization header before getReports:', (api.defaults.headers as any).common?.Authorization || (api.defaults.headers as any).Authorization);
+      } catch (err) {
+        console.log('Could not read Authorization header', err);
+      }
+
       const response = await paymentAPI.getReports();
+      console.log('Reports response:', response);
       setWeeklyReports(response.weekly_reports || []);
       setMonthlyReports(response.monthly_reports || []);
+      console.log('Reports loaded successfully:', {
+        weekly: response.weekly_reports?.length || 0,
+        monthly: response.monthly_reports?.length || 0
+      });
     } catch (error) {
       console.error('Failed to load reports:', error);
-      // Don't show error for initial load, just log it
       setWeeklyReports([]);
       setMonthlyReports([]);
+      setError('Raporlar yüklenirken hata oluştu');
     } finally {
       setIsLoading(false);
     }
