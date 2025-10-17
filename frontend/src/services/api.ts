@@ -8,7 +8,14 @@ import {
   YearlyReport
 } from '../types/payment.types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+// Use relative URLs in production, localhost in development
+const API_BASE_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:8080/api');
+
+console.log('API Configuration:', {
+  NODE_ENV: process.env.NODE_ENV,
+  REACT_APP_API_URL: process.env.REACT_APP_API_URL,
+  API_BASE_URL: API_BASE_URL
+});
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -182,7 +189,7 @@ export const authAPI = {
   // Login
   login: async (username: string, password: string): Promise<{ success: boolean; message?: string; token?: string }> => {
     try {
-      const response = await axios.post(`http://localhost:8080/api/public/login`, {
+      const response = await axios.post(`${API_BASE_URL}/public/login`, {
         username,
         password,
       });
