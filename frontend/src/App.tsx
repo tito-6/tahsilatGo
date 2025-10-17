@@ -8,7 +8,7 @@ import { Login } from './components/Login';
 import YearlyReportComponent from './components/YearlyReport';
 import { paymentAPI, authAPI, setAuthCredentials, clearAuthCredentials, isAuthenticated } from './services/api';
 import api from './services/api';
-import { WeeklyReport as WeeklyReportType, MonthlyReport as MonthlyReportType, UploadResponse, YearlyReport } from './types/payment.types';
+import { WeeklyReport as WeeklyReportType, MonthlyReport as MonthlyReportType, UploadResponse, YearlyReport, PaymentRecord } from './types/payment.types';
 
 function App() {
   // Authentication states
@@ -20,6 +20,7 @@ function App() {
   // Existing states
   const [weeklyReports, setWeeklyReports] = useState<WeeklyReportType[]>([]);
   const [monthlyReports, setMonthlyReports] = useState<MonthlyReportType[]>([]);
+  const [allPayments, setAllPayments] = useState<PaymentRecord[]>([]);
   const [yearlyReport, setYearlyReport] = useState<YearlyReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +115,7 @@ function App() {
     // Clear all data
     setWeeklyReports([]);
     setMonthlyReports([]);
+    setAllPayments([]);
     setYearlyReport(null);
   };
 
@@ -216,14 +218,22 @@ function App() {
       console.log('Reports response:', response);
       setWeeklyReports(response.weekly_reports || []);
       setMonthlyReports(response.monthly_reports || []);
+      
+      // Also load all payments for check payment details
+      const paymentsResponse = await paymentAPI.getPayments();
+      console.log('Payments response:', paymentsResponse?.length || 0);
+      setAllPayments(paymentsResponse || []);
+      
       console.log('Reports loaded successfully:', {
         weekly: response.weekly_reports?.length || 0,
-        monthly: response.monthly_reports?.length || 0
+        monthly: response.monthly_reports?.length || 0,
+        payments: paymentsResponse?.length || 0
       });
     } catch (error) {
       console.error('Failed to load reports:', error);
       setWeeklyReports([]);
       setMonthlyReports([]);
+      setAllPayments([]);
       setError('Raporlar yüklenirken hata oluştu');
     } finally {
       setIsLoading(false);
@@ -237,6 +247,8 @@ function App() {
         await paymentAPI.clearAllPayments();
         setWeeklyReports([]);
         setMonthlyReports([]);
+        setAllPayments([]);
+        setYearlyReport(null);
         setYearlyReport(null);
         setSuccess('Tüm veriler başarıyla silindi');
         setError(null);
@@ -663,6 +675,7 @@ function App() {
                         <MonthlyReport
                           key={report.month}
                           report={report}
+                          allPayments={allPayments}
                         />
                       ))
                     )}

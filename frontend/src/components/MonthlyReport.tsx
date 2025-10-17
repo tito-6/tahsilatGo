@@ -1,15 +1,19 @@
 import React from 'react';
-import { MonthlyReport as MonthlyReportType } from '../types/payment.types';
+import { MonthlyReport as MonthlyReportType, PaymentRecord } from '../types/payment.types';
 import { formatAmountUSDPlain } from '../utils/formatters';
 import { formatMonth } from '../utils/dateHelpers';
 
 interface MonthlyReportProps {
   report: MonthlyReportType;
+  allPayments: PaymentRecord[];
 }
 
-export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report }) => {
+export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report, allPayments }) => {
   const totalProjectUSD = report.project_summary.mkm + report.project_summary.msm;
   const totalLocationUSD = Object.values(report.location_summary).reduce((sum, location) => sum + location.total, 0);
+  
+  // Get the month name in Turkish for dynamic headers
+  const monthName = new Date(report.month).toLocaleDateString('tr-TR', { month: 'long' }).toUpperCase();
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -115,6 +119,135 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report }) => {
         </div>
       </div>
 
+      {/* Monthly Check Payments Section */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          AYLIK ÇEK TAHSİLATLARI (ÇEK ÖDEMELERİ)
+        </h3>
+        <div className="overflow-x-auto">
+          {(() => {
+            // Get the month and year from the report
+            const reportDate = new Date(report.month);
+            const year = reportDate.getFullYear();
+            const month = reportDate.getMonth();
+            
+            // Filter payments to get only check payments for this month
+            const checkPayments = allPayments.filter(payment => {
+              const paymentDate = new Date(payment.payment_date);
+              return (
+                payment.payment_method === 'Çek' &&
+                paymentDate.getFullYear() === year &&
+                paymentDate.getMonth() === month
+              );
+            });
+
+            // Group check payments by customer and project
+            const groupedPayments = checkPayments.reduce((acc, payment) => {
+              const key = `${payment.customer_name}_${payment.project}`;
+              if (!acc[key]) {
+                acc[key] = {
+                  customer: payment.customer_name,
+                  project: payment.project,
+                  totalTL: 0,
+                  totalUSD: 0,
+                  payments: []
+                };
+              }
+              acc[key].totalTL += payment.currency === 'TL' ? payment.amount : 0;
+              acc[key].totalUSD += payment.amount_usd;
+              acc[key].payments.push(payment);
+              return acc;
+            }, {} as Record<string, any>);
+
+            const groupedPaymentsList = Object.values(groupedPayments);
+            
+            // Calculate grand totals
+            const grandTotalTL = groupedPaymentsList.reduce((sum, group) => sum + group.totalTL, 0);
+            const grandTotalUSD = groupedPaymentsList.reduce((sum, group) => sum + group.totalUSD, 0);
+
+            if (groupedPaymentsList.length === 0) {
+              return (
+                <div className="text-center py-8 text-gray-500">
+                  Bu ay için çek ödemesi bulunmamaktadır.
+                </div>
+              );
+            }
+
+            return (
+              <table className="min-w-full divide-y divide-gray-200 border border-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                      No
+                    </th>
+                    <th className="px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                      Müşteri
+                    </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                      Proje
+                    </th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                      Toplam TL
+                    </th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                      Toplam USD
+                    </th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border border-gray-300">
+                      Ödeme Sayısı
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {groupedPaymentsList.map((group, index) => (
+                    <tr key={`${group.customer}_${group.project}`} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                        {index + 1}
+                      </td>
+                      <td className="px-6 py-2 text-left text-sm text-gray-900 border border-gray-300">
+                        {group.customer}
+                      </td>
+                      <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                        {group.project}
+                      </td>
+                      <td className="px-4 py-2 text-center text-sm font-medium text-gray-900 border border-gray-300">
+                        {formatAmountUSDPlain(group.totalTL)}
+                      </td>
+                      <td className="px-4 py-2 text-center text-sm font-medium text-gray-900 border border-gray-300">
+                        {formatAmountUSDPlain(group.totalUSD)}
+                      </td>
+                      <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                        {group.payments.length}
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Totals Row */}
+                  <tr className="bg-gray-100 font-semibold">
+                    <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                      
+                    </td>
+                    <td className="px-6 py-2 text-left text-sm text-gray-900 border border-gray-300">
+                      TOPLAM
+                    </td>
+                    <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                      
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm font-bold text-gray-900 border border-gray-300">
+                      {formatAmountUSDPlain(grandTotalTL)}
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm font-bold text-gray-900 border border-gray-300">
+                      {formatAmountUSDPlain(grandTotalUSD)}
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm font-bold text-gray-900 border border-gray-300">
+                      {checkPayments.length}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            );
+          })()}
+        </div>
+      </div>
+
       {/* Payment Method Breakdown by Project */}
       <div className="mb-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -124,7 +257,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report }) => {
           {/* MKM Project */}
           <div>
             <h4 className="text-md font-medium text-gray-900 mb-3">
-              EYLÜL AYI MKM TAHSİLATLAR
+              {monthName} AYI MKM TAHSİLATLAR
             </h4>
             <div className="overflow-x-auto">
               <table className="w-full divide-y divide-gray-200 border border-gray-300">
@@ -177,7 +310,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report }) => {
           {/* MSM Project */}
           <div>
             <h4 className="text-md font-medium text-gray-900 mb-3">
-              EYLÜL AYI MSM TAHSİLATLAR
+              {monthName} AYI MSM TAHSİLATLAR
             </h4>
             <div className="overflow-x-auto">
               <table className="w-full divide-y divide-gray-200 border border-gray-300">
@@ -230,7 +363,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report }) => {
           {/* Combined Total */}
           <div>
             <h4 className="text-md font-medium text-gray-900 mb-3">
-              EYLÜL AYI GENEL
+              {monthName} AYI GENEL
             </h4>
             <div className="overflow-x-auto">
               <table className="w-full divide-y divide-gray-200 border border-gray-300">
