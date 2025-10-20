@@ -23,6 +23,11 @@ export interface PaymentRecord {
   amount_usd: number;
   exchange_rate: number;
   created_at?: string;
+  // KDV (Tax) related fields
+  includes_kdv?: boolean;
+  kdv_amount?: number;
+  kdv_rate?: number; // KDV percentage (18%, 20%, etc.)
+  kdv_note?: string;
 }
 
 export interface WeeklyReport {

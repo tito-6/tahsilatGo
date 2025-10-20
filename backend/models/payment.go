@@ -30,6 +30,11 @@ type PaymentRecord struct {
 	ExchangeRate  float64   `json:"exchange_rate" db:"exchange_rate"` // Used rate
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 	RawData       string    `json:"raw_data" db:"raw_data"`           // Original raw data for audit
+	// KDV (Tax) related fields
+	IncludesKdv *bool    `json:"includes_kdv" db:"includes_kdv"`     // Whether payment includes KDV
+	KdvAmount   *float64 `json:"kdv_amount" db:"kdv_amount"`         // KDV amount
+	KdvRate     *float64 `json:"kdv_rate" db:"kdv_rate"`             // KDV rate percentage
+	KdvNote     *string  `json:"kdv_note" db:"kdv_note"`             // KDV related note
 }
 
 // WeeklyReport represents a weekly report structure
@@ -106,6 +111,20 @@ type ExportRequest struct {
 	Type   string `json:"type"`   // "weekly" or "monthly"
 }
 
+// KdvUpdateRequest represents request to update KDV information
+type KdvUpdateRequest struct {
+	IncludesKdv bool     `json:"includes_kdv"`
+	KdvAmount   *float64 `json:"kdv_amount,omitempty"`
+	KdvRate     *float64 `json:"kdv_rate,omitempty"`
+	KdvNote     *string  `json:"kdv_note,omitempty"`
+}
+
+// KdvUpdateResponse represents response after updating KDV
+type KdvUpdateResponse struct {
+	Message string        `json:"message"`
+	Payment PaymentRecord `json:"payment"`
+}
+
 // ExchangeRate represents TCMB exchange rate data
 type ExchangeRate struct {
 	Date         time.Time `json:"date"`
@@ -156,4 +175,9 @@ type Payment struct {
 	AmountUSD     float64   `json:"amount_usd" db:"amount_usd"`
 	ExchangeRate  float64   `json:"exchange_rate" db:"exchange_rate"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	// KDV (Tax) related fields
+	IncludesKdv *bool    `json:"includes_kdv" db:"includes_kdv"`
+	KdvAmount   *float64 `json:"kdv_amount" db:"kdv_amount"`
+	KdvRate     *float64 `json:"kdv_rate" db:"kdv_rate"`
+	KdvNote     *string  `json:"kdv_note" db:"kdv_note"`
 }

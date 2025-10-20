@@ -1,14 +1,15 @@
 import React from 'react';
-import { WeeklyReport as WeeklyReportType } from '../types/payment.types';
+import { WeeklyReport as WeeklyReportType, PaymentRecord } from '../types/payment.types';
 import { formatAmountUSD, formatAmountTL, formatAmountUSDPlain, formatAmountTLPlain } from '../utils/formatters';
 import { formatWeekRange } from '../utils/dateHelpers';
 
 interface WeeklyReportProps {
   report: WeeklyReportType;
   weekNumber: number;
+  allPayments: PaymentRecord[];
 }
 
-export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber }) => {
+export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber, allPayments }) => {
   const totalCustomerUSD = Object.values(report.customer_summary).reduce((sum, amount) => sum + amount, 0);
   const totalMethodTL = Object.values(report.payment_methods).reduce((sum, method) => sum + method.tl, 0);
   const totalMethodUSD = Object.values(report.payment_methods).reduce((sum, method) => sum + method.usd, 0);
@@ -148,16 +149,30 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber }
             <tbody className="bg-white divide-y divide-gray-200">
               {Object.entries(report.customer_summary)
                 .sort(([, a], [, b]) => b - a)
-                .map(([customer, amount]) => (
-                  <tr key={customer} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">
-                      {customer}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">
-                      {formatAmountUSDPlain(amount)}
-                    </td>
-                  </tr>
-                ))}
+                .map(([customer, amount]) => {
+                  // Check if this customer has any KDV payments in this week
+                  const hasKdvPayments = allPayments.some(payment => {
+                    const paymentDate = new Date(payment.payment_date);
+                    const weekStart = new Date(report.start_date);
+                    const weekEnd = new Date(report.end_date);
+                    return payment.includes_kdv && 
+                           payment.customer_name === customer && 
+                           paymentDate >= weekStart && 
+                           paymentDate <= weekEnd;
+                  });
+                  
+                  return (
+                    <tr key={customer} className={`hover:bg-gray-50 ${hasKdvPayments ? 'bg-orange-50 border-orange-200' : ''}`}>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium border border-gray-300 ${hasKdvPayments ? 'text-orange-800' : 'text-gray-900'}`}>
+                        {customer}
+                        {hasKdvPayments && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">KDV</span>}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border border-gray-300">
+                        {formatAmountUSDPlain(amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               <tr className="bg-gray-100 font-semibold">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">
                   TOPLAM
@@ -495,10 +510,21 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber }
                   // Calculate grand total for this customer (sum of all daily amounts)
                   const grandTotal = dailyAmounts.reduce((sum, amt) => sum + amt, 0);
                   
+                  // Check if this customer has any KDV payments in this week
+                  const hasKdvPayments = customerPayments.some(payment => {
+                    const paymentDate = new Date(payment.payment_date);
+                    const weekStart = new Date(report.start_date);
+                    const weekEnd = new Date(report.end_date);
+                    return payment.includes_kdv && paymentDate >= weekStart && paymentDate <= weekEnd;
+                  });
+                  
                   return (
-                    <tr key={customer} className="hover:bg-gray-50">
+                    <tr key={customer} className={`hover:bg-gray-50 ${hasKdvPayments ? 'bg-orange-50 border-orange-200' : ''}`}>
                       <td className="px-2 py-3 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">{idx + 1}</td>
-                      <td className="px-2 py-3 whitespace-nowrap text-sm font-medium text-gray-900 border border-gray-300">{customer}</td>
+                      <td className={`px-2 py-3 whitespace-nowrap text-sm font-medium border border-gray-300 ${hasKdvPayments ? 'text-orange-800' : 'text-gray-900'}`}>
+                        {customer}
+                        {hasKdvPayments && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">KDV</span>}
+                      </td>
                       <td className="px-2 py-3 whitespace-nowrap text-sm text-center text-gray-900 border border-gray-300">{dominantProject}</td>
                       <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900 border border-gray-300">{formatAmountUSDPlain(amount)}</td>
                       {dailyAmounts.map((amt, i) => (
@@ -550,6 +576,65 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ report, weekNumber }
           </table>
         </div>
       </div>
+
+      {/* KDV Notes Section */}
+      {(() => {
+        // Find all payments with KDV in this week
+        const kdvPayments = allPayments.filter(payment => {
+          const paymentDate = new Date(payment.payment_date);
+          const weekStart = new Date(report.start_date);
+          const weekEnd = new Date(report.end_date);
+          const hasKdv = payment.includes_kdv && paymentDate >= weekStart && paymentDate <= weekEnd;
+          
+          // Debug logging
+          if (payment.includes_kdv) {
+            console.log('Found KDV payment:', {
+              customer: payment.customer_name,
+              includes_kdv: payment.includes_kdv,
+              kdv_amount: payment.kdv_amount,
+              kdv_rate: payment.kdv_rate,
+              kdv_note: payment.kdv_note,
+              payment_date: payment.payment_date,
+              inWeekRange: hasKdv
+            });
+          }
+          
+          return hasKdv;
+        });
+
+        console.log('KDV payments found for week:', kdvPayments.length, kdvPayments);
+
+        if (kdvPayments.length === 0) return null;
+
+        return (
+          <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <h4 className="text-md font-semibold text-orange-800 mb-3">
+              ⚠️ KDV DAHİL ÖDEMELER - MODEL KUYUM-MODEL SANAYİ MERKEZİ TAHSİLATLAR TABLOSU
+            </h4>
+            <div className="space-y-2 text-sm">
+              {kdvPayments.map((payment, index) => (
+                <div key={payment.id || index} className="flex flex-wrap items-center gap-2 text-orange-700">
+                  <span className="font-medium">{payment.customer_name}</span>
+                  <span>-</span>
+                  <span>{formatAmountUSDPlain(payment.amount)} {payment.currency}</span>
+                  <span>-</span>
+                  <span>KDV: {formatAmountUSDPlain(payment.kdv_amount || 0)} {payment.currency}</span>
+                  <span>(%{payment.kdv_rate || 0})</span>
+                  {payment.kdv_note && (
+                    <>
+                      <span>-</span>
+                      <span className="italic">{payment.kdv_note}</span>
+                    </>
+                  )}
+                </div>
+              ))}
+              <p className="text-xs text-orange-600 mt-2 italic">
+                * Bu ödemeler KDV dahil tutarları göstermektedir. Raporlama sırasında dikkate alınmalıdır.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -169,7 +169,7 @@ func (h *UploadHandler) savePayment(payment models.PaymentRecord) error {
 
 // GetPayments retrieves all payments from the database
 func (h *UploadHandler) GetPayments(c *gin.Context) {
-	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments ORDER BY payment_date DESC`
+	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data, includes_kdv, kdv_amount, kdv_rate, kdv_note FROM payments ORDER BY payment_date DESC`
 	rows, err := h.db.Query(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -194,6 +194,10 @@ func (h *UploadHandler) GetPayments(c *gin.Context) {
 			&payment.ExchangeRate,
 			&payment.CreatedAt,
 			&payment.RawData,
+			&payment.IncludesKdv,
+			&payment.KdvAmount,
+			&payment.KdvRate,
+			&payment.KdvNote,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -213,7 +217,7 @@ func (h *UploadHandler) GetReports(c *gin.Context) {
 	log.Printf("GetReports called from %s, Authorization present: %t", remoteIP, authHdr != "")
 
 	// Get all payments
-	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data FROM payments ORDER BY payment_date`
+	query := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data, includes_kdv, kdv_amount, kdv_rate, kdv_note FROM payments ORDER BY payment_date`
 	rows, err := h.db.Query(query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -238,6 +242,10 @@ func (h *UploadHandler) GetReports(c *gin.Context) {
 			&payment.ExchangeRate,
 			&payment.CreatedAt,
 			&payment.RawData,
+			&payment.IncludesKdv,
+			&payment.KdvAmount,
+			&payment.KdvRate,
+			&payment.KdvNote,
 		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -444,6 +452,85 @@ func (h *UploadHandler) DeletePayment(c *gin.Context) {
 			"payment_method": payment.PaymentMethod,
 			"project": payment.Project,
 		},
+	})
+}
+
+// UpdatePaymentKDV updates KDV information for a specific payment record
+func (h *UploadHandler) UpdatePaymentKDV(c *gin.Context) {
+	paymentID := c.Param("id")
+	
+	if paymentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Payment ID is required"})
+		return
+	}
+	
+	var req models.KdvUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("Invalid KDV request format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	
+	// First verify the payment exists
+	var exists bool
+	checkQuery := `SELECT EXISTS(SELECT 1 FROM payments WHERE id = ?)`
+	err := h.db.QueryRow(checkQuery, paymentID).Scan(&exists)
+	if err != nil {
+		log.Printf("Error checking payment existence: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	}
+	
+	// Update KDV information
+	updateQuery := `UPDATE payments SET includes_kdv = ?, kdv_amount = ?, kdv_rate = ?, kdv_note = ? WHERE id = ?`
+	
+	_, err = h.db.Exec(updateQuery, req.IncludesKdv, req.KdvAmount, req.KdvRate, req.KdvNote, paymentID)
+	if err != nil {
+		log.Printf("Error updating KDV for payment %s: %v", paymentID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update KDV information"})
+		return
+	}
+	
+	// Retrieve the updated payment record
+	var payment models.PaymentRecord
+	selectQuery := `SELECT id, customer_name, payment_date, amount, currency, payment_method, location, project, account_name, amount_usd, exchange_rate, created_at, raw_data, includes_kdv, kdv_amount, kdv_rate, kdv_note FROM payments WHERE id = ?`
+	
+	err = h.db.QueryRow(selectQuery, paymentID).Scan(
+		&payment.ID,
+		&payment.CustomerName,
+		&payment.PaymentDate,
+		&payment.Amount,
+		&payment.Currency,
+		&payment.PaymentMethod,
+		&payment.Location,
+		&payment.Project,
+		&payment.AccountName,
+		&payment.AmountUSD,
+		&payment.ExchangeRate,
+		&payment.CreatedAt,
+		&payment.RawData,
+		&payment.IncludesKdv,
+		&payment.KdvAmount,
+		&payment.KdvRate,
+		&payment.KdvNote,
+	)
+	
+	if err != nil {
+		log.Printf("Error retrieving updated payment: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve updated payment"})
+		return
+	}
+	
+	log.Printf("Updated KDV for payment ID %s: includes_kdv=%v", paymentID, req.IncludesKdv)
+	
+	c.JSON(http.StatusOK, models.KdvUpdateResponse{
+		Message: "KDV information updated successfully",
+		Payment: payment,
 	})
 }
 

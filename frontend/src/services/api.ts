@@ -153,6 +153,17 @@ export const paymentAPI = {
     return response.data;
   },
 
+  // Update payment KDV information
+  updatePaymentKDV: async (paymentId: number, kdvData: {
+    includes_kdv: boolean;
+    kdv_amount?: number;
+    kdv_rate?: number;
+    kdv_note?: string;
+  }): Promise<{ message: string; payment: PaymentRecord }> => {
+    const response = await api.put<{ message: string; payment: PaymentRecord }>(`/payments/${paymentId}/kdv`, kdvData);
+    return response.data;
+  },
+
   // Export Excel
   exportExcel: async (): Promise<Blob> => {
     const response = await api.get('/export/excel', {

@@ -60,6 +60,7 @@ func main() {
 		api.GET("/reports/yearly/:year", uploadHandler.GetYearlyReport) // Add yearly report endpoint
 		api.DELETE("/payments", uploadHandler.ClearAllPayments) // Add clear endpoint
 		api.DELETE("/payments/:id", uploadHandler.DeletePayment) // Add individual payment delete endpoint
+		api.PUT("/payments/:id/kdv", uploadHandler.UpdatePaymentKDV) // Add KDV update endpoint
 		api.DELETE("/payments/date-range", uploadHandler.DeletePaymentsByDateRange) // Add date range delete endpoint
 		api.GET("/stats", uploadHandler.GetDatabaseStats)       // Add stats endpoint
 		api.GET("/audit/report", uploadHandler.AuditReportGeneration) // Add report audit endpoint
@@ -104,7 +105,7 @@ func initDB() (*sql.DB, error) {
 		return nil, err
 	}
 
-	// Create payments table
+	// Create payments table with KDV support
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS payments (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,7 +120,11 @@ func initDB() (*sql.DB, error) {
 		amount_usd REAL NOT NULL,
 		exchange_rate REAL NOT NULL,
 		raw_data TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		includes_kdv BOOLEAN DEFAULT FALSE,
+		kdv_amount REAL,
+		kdv_rate REAL,
+		kdv_note TEXT
 	);
 	`
 
@@ -130,6 +135,17 @@ func initDB() (*sql.DB, error) {
 	// Add raw_data column if it doesn't exist (for existing databases)
 	alterTableSQL := `ALTER TABLE payments ADD COLUMN raw_data TEXT`
 	db.Exec(alterTableSQL) // Ignore error - column might already exist
+	
+	// Add KDV columns if they don't exist (for existing databases)
+	kdvAlterSQL := []string{
+		`ALTER TABLE payments ADD COLUMN includes_kdv BOOLEAN DEFAULT FALSE`,
+		`ALTER TABLE payments ADD COLUMN kdv_amount REAL`,
+		`ALTER TABLE payments ADD COLUMN kdv_rate REAL`,
+		`ALTER TABLE payments ADD COLUMN kdv_note TEXT`,
+	}
+	for _, sql := range kdvAlterSQL {
+		db.Exec(sql) // Ignore errors - columns might already exist
+	}
 
 	// Create indexes for better performance
 	indexSQL := `

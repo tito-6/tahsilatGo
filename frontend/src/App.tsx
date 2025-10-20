@@ -653,6 +653,7 @@ function App() {
                           key={`${report.start_date}-${report.end_date}`}
                           report={report}
                           weekNumber={index + 1}
+                          allPayments={allPayments}
                         />
                       ))
                     )}

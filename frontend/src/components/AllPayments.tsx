@@ -15,6 +15,17 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<keyof PaymentRecord>('payment_date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  
+  // KDV related states
+  const [showKdvModal, setShowKdvModal] = useState(false);
+  const [selectedPaymentForKdv, setSelectedPaymentForKdv] = useState<PaymentRecord | null>(null);
+  const [kdvFormData, setKdvFormData] = useState({
+    includes_kdv: false,
+    kdv_amount: 0,
+    kdv_rate: 20,
+    kdv_note: ''
+  });
+  const [updatingKdv, setUpdatingKdv] = useState(false);
   const [filterBy, setFilterBy] = useState<{
     currency: string;
     paymentMethod: string;
@@ -33,11 +44,34 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
     loadPayments();
   }, []);
 
+  // Debug useEffect for modal state
+  useEffect(() => {
+    if (showKdvModal) {
+      console.log('KDV Modal opened!', { showKdvModal, selectedPaymentForKdv });
+      // Add DOM debugging
+      setTimeout(() => {
+        const modalElements = document.querySelectorAll('[style*="999999"]');
+        console.log('Modal elements found in DOM:', modalElements.length);
+        modalElements.forEach((el, index) => {
+          console.log(`Modal element ${index}:`, el);
+          console.log(`Modal element ${index} computed styles:`, window.getComputedStyle(el));
+        });
+      }, 100);
+    }
+  }, [showKdvModal, selectedPaymentForKdv]);
+
   const loadPayments = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const data = await paymentAPI.getPayments();
+      console.log('Loaded payments data:', data);
+      console.log('First payment KDV fields:', data?.[0] ? {
+        includes_kdv: data[0].includes_kdv,
+        kdv_amount: data[0].kdv_amount,
+        kdv_rate: data[0].kdv_rate,
+        kdv_note: data[0].kdv_note
+      } : 'No payments');
       setPayments(data || []);
     } catch (error) {
       console.error('Failed to load payments:', error);
@@ -98,6 +132,51 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
     } finally {
       setBulkDeleting(false);
     }
+  };
+
+  // KDV handling functions
+  const handleKdvClick = (payment: PaymentRecord) => {
+    console.log('KDV button clicked for payment:', payment);
+    
+    // Set all states in sequence
+    setSelectedPaymentForKdv(payment);
+    setKdvFormData({
+      includes_kdv: payment.includes_kdv || false,
+      kdv_amount: payment.kdv_amount || 0,
+      kdv_rate: payment.kdv_rate || 20,
+      kdv_note: payment.kdv_note || ''
+    });
+    setShowKdvModal(true);
+    
+    console.log('Modal state set to true');
+  };
+
+  const handleKdvSubmit = async () => {
+    if (!selectedPaymentForKdv?.id) return;
+
+    try {
+      setUpdatingKdv(true);
+      const response = await paymentAPI.updatePaymentKDV(selectedPaymentForKdv.id, kdvFormData);
+      
+      // Update the payment in local state
+      setPayments(payments.map(payment => 
+        payment.id === selectedPaymentForKdv.id ? response.payment : payment
+      ));
+      
+      setShowKdvModal(false);
+      setSelectedPaymentForKdv(null);
+      alert('KDV bilgileri başarıyla güncellendi');
+    } catch (error) {
+      console.error('Error updating KDV:', error);
+      alert('KDV bilgileri güncellenirken hata oluştu');
+    } finally {
+      setUpdatingKdv(false);
+    }
+  };
+
+  const closeKdvModal = () => {
+    setShowKdvModal(false);
+    setSelectedPaymentForKdv(null);
   };
 
   const handleSelectPayment = (paymentId: number) => {
@@ -453,6 +532,9 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
                   >
                     Hesap Adı {getSortIcon('account_name')}
                   </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    KDV Durumu
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     <span title="Kayıtları seçerek silme seçeneklerini görün">
                       İşlemler
@@ -472,7 +554,9 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
               )}
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredPayments.map((payment, index) => (
-                  <tr key={payment.id || index} className="hover:bg-gray-50">
+                  <tr key={payment.id || index} className={`hover:bg-gray-50 ${
+                    payment.includes_kdv ? 'bg-orange-50 border-l-4 border-orange-400' : ''
+                  }`}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input
                         type="checkbox"
@@ -519,6 +603,35 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
                     <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                       {payment.account_name}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {payment.includes_kdv ? (
+                        <div className="flex flex-col items-center">
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                            KDV Dahil
+                          </span>
+                          {payment.kdv_amount && (
+                            <span className="text-xs text-gray-600 mt-1">
+                              KDV: {formatCurrency(payment.kdv_amount, payment.currency)}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleKdvClick(payment)}
+                            className="text-xs text-orange-600 hover:text-orange-800 mt-1 underline"
+                          >
+                            Düzenle
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => handleKdvClick(payment)}
+                            className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          >
+                            + KDV Ekle
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {selectedPayments.has(payment.id!) && (
                         <button
@@ -547,6 +660,199 @@ export const AllPayments: React.FC<AllPaymentsProps> = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* KDV Modal */}
+      {showKdvModal && selectedPaymentForKdv && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            zIndex: 999999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              width: '500px',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              borderRadius: '10px',
+              padding: '30px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+              position: 'relative'
+            }}
+          >
+            {/* Header */}
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
+              <h2 style={{margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#333'}}>
+                KDV Bilgileri Düzenle
+              </h2>
+              <button 
+                onClick={closeKdvModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Customer Info */}
+            <div style={{
+              backgroundColor: '#f8f9fa',
+              padding: '15px',
+              borderRadius: '8px',
+              marginBottom: '20px'
+            }}>
+              <p style={{margin: '5px 0', fontSize: '14px', color: '#666'}}>
+                <strong>Müşteri:</strong> {selectedPaymentForKdv.customer_name}
+              </p>
+              <p style={{margin: '5px 0', fontSize: '14px', color: '#666'}}>
+                <strong>Tutar:</strong> {formatCurrency(selectedPaymentForKdv.amount, selectedPaymentForKdv.currency)}
+              </p>
+              <p style={{margin: '5px 0', fontSize: '14px', color: '#666'}}>
+                <strong>Tarih:</strong> {formatDate(selectedPaymentForKdv.payment_date)}
+              </p>
+            </div>
+
+            {/* KDV Form */}
+            <div style={{marginBottom: '20px'}}>
+              {/* KDV Checkbox */}
+              <div style={{marginBottom: '15px'}}>
+                <label style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
+                  <input
+                    type="checkbox"
+                    checked={kdvFormData.includes_kdv}
+                    onChange={(e) => setKdvFormData(prev => ({ ...prev, includes_kdv: e.target.checked }))}
+                    style={{marginRight: '10px'}}
+                  />
+                  <span style={{fontSize: '16px', fontWeight: '500'}}>
+                    Bu ödeme KDV dahildir
+                  </span>
+                </label>
+              </div>
+
+              {/* KDV Details - only show when checkbox is checked */}
+              {kdvFormData.includes_kdv && (
+                <div style={{paddingLeft: '20px'}}>
+                  {/* KDV Rate */}
+                  <div style={{marginBottom: '15px'}}>
+                    <label style={{display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500'}}>
+                      KDV Oranı (%)
+                    </label>
+                    <select
+                      value={kdvFormData.kdv_rate}
+                      onChange={(e) => setKdvFormData(prev => ({ ...prev, kdv_rate: Number(e.target.value) }))}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value={1}>%1</option>
+                      <option value={8}>%8</option>
+                      <option value={18}>%18</option>
+                      <option value={20}>%20</option>
+                    </select>
+                  </div>
+
+                  {/* KDV Amount */}
+                  <div style={{marginBottom: '15px'}}>
+                    <label style={{display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500'}}>
+                      KDV Tutarı ({selectedPaymentForKdv.currency})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={kdvFormData.kdv_amount}
+                      onChange={(e) => setKdvFormData(prev => ({ ...prev, kdv_amount: Number(e.target.value) }))}
+                      placeholder="KDV tutarını girin"
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '14px'
+                      }}
+                    />
+                  </div>
+
+                  {/* KDV Note */}
+                  <div style={{marginBottom: '15px'}}>
+                    <label style={{display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500'}}>
+                      KDV Notu (Opsiyonel)
+                    </label>
+                    <textarea
+                      value={kdvFormData.kdv_note}
+                      onChange={(e) => setKdvFormData(prev => ({ ...prev, kdv_note: e.target.value }))}
+                      placeholder="KDV ile ilgili not ekleyebilirsiniz"
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div style={{display: 'flex', justifyContent: 'flex-end', gap: '10px'}}>
+              <button 
+                onClick={closeKdvModal}
+                style={{
+                  padding: '10px 20px',
+                  border: '1px solid #ddd',
+                  borderRadius: '5px',
+                  backgroundColor: '#f8f9fa',
+                  color: '#666',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                İptal
+              </button>
+              <button 
+                onClick={handleKdvSubmit}
+                disabled={updatingKdv}
+                style={{
+                  padding: '10px 20px',
+                  border: 'none',
+                  borderRadius: '5px',
+                  backgroundColor: '#ff6b35',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  opacity: updatingKdv ? 0.6 : 1
+                }}
+              >
+                {updatingKdv ? 'Kaydediliyor...' : 'Kaydet'}
+              </button>
+            </div>
           </div>
         </div>
       )}

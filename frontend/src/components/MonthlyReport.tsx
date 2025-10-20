@@ -198,28 +198,34 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report, allPayment
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {groupedPaymentsList.map((group, index) => (
-                    <tr key={`${group.customer}_${group.project}`} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
-                        {index + 1}
-                      </td>
-                      <td className="px-6 py-2 text-left text-sm text-gray-900 border border-gray-300">
-                        {group.customer}
-                      </td>
-                      <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
-                        {group.project}
-                      </td>
-                      <td className="px-4 py-2 text-center text-sm font-medium text-gray-900 border border-gray-300">
-                        {formatAmountUSDPlain(group.totalTL)}
-                      </td>
-                      <td className="px-4 py-2 text-center text-sm font-medium text-gray-900 border border-gray-300">
-                        {formatAmountUSDPlain(group.totalUSD)}
-                      </td>
-                      <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
-                        {group.payments.length}
-                      </td>
-                    </tr>
-                  ))}
+                  {groupedPaymentsList.map((group, index) => {
+                    // Check if this customer has any KDV payments in this month
+                    const hasKdvPayments = group.payments.some((payment: PaymentRecord) => payment.includes_kdv);
+                    
+                    return (
+                      <tr key={`${group.customer}_${group.project}`} className={`hover:bg-gray-50 ${hasKdvPayments ? 'bg-orange-50 border-orange-200' : ''}`}>
+                        <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {index + 1}
+                        </td>
+                        <td className={`px-6 py-2 text-left text-sm border border-gray-300 ${hasKdvPayments ? 'text-orange-800' : 'text-gray-900'}`}>
+                          {group.customer}
+                          {hasKdvPayments && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">KDV</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {group.project}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm font-medium text-gray-900 border border-gray-300">
+                          {formatAmountUSDPlain(group.totalTL)}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm font-medium text-gray-900 border border-gray-300">
+                          {formatAmountUSDPlain(group.totalUSD)}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {group.payments.length}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {/* Totals Row */}
                   <tr className="bg-gray-100 font-semibold">
                     <td className="px-3 py-2 text-center text-sm text-gray-900 border border-gray-300">
@@ -535,6 +541,75 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ report, allPayment
           </table>
         </div>
       </div>
+
+      {/* KDV Notes Section */}
+      {(() => {
+        // Find all payments with KDV in this month
+        const reportDate = new Date(report.month);
+        const year = reportDate.getFullYear();
+        const month = reportDate.getMonth();
+        
+        const kdvPayments = allPayments.filter(payment => {
+          const paymentDate = new Date(payment.payment_date);
+          const hasKdv = (
+            payment.includes_kdv &&
+            paymentDate.getFullYear() === year &&
+            paymentDate.getMonth() === month
+          );
+          
+          // Debug logging
+          if (payment.includes_kdv) {
+            console.log('Found KDV payment in month:', {
+              customer: payment.customer_name,
+              includes_kdv: payment.includes_kdv,
+              kdv_amount: payment.kdv_amount,
+              kdv_rate: payment.kdv_rate,
+              kdv_note: payment.kdv_note,
+              payment_date: payment.payment_date,
+              paymentYear: paymentDate.getFullYear(),
+              paymentMonth: paymentDate.getMonth(),
+              reportYear: year,
+              reportMonth: month,
+              inMonthRange: hasKdv
+            });
+          }
+          
+          return hasKdv;
+        });
+
+        console.log('KDV payments found for month:', kdvPayments.length, kdvPayments);
+
+        if (kdvPayments.length === 0) return null;
+
+        return (
+          <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+            <h4 className="text-md font-semibold text-orange-800 mb-3">
+              ⚠️ KDV DAHİL ÖDEMELER - MODEL KUYUM-MODEL SANAYİ MERKEZİ TAHSİLATLAR TABLOSU
+            </h4>
+            <div className="space-y-2 text-sm">
+              {kdvPayments.map((payment, index) => (
+                <div key={payment.id || index} className="flex flex-wrap items-center gap-2 text-orange-700">
+                  <span className="font-medium">{payment.customer_name}</span>
+                  <span>-</span>
+                  <span>{formatAmountUSDPlain(payment.amount)} {payment.currency}</span>
+                  <span>-</span>
+                  <span>KDV: {formatAmountUSDPlain(payment.kdv_amount || 0)} {payment.currency}</span>
+                  <span>(%{payment.kdv_rate || 0})</span>
+                  {payment.kdv_note && (
+                    <>
+                      <span>-</span>
+                      <span className="italic">{payment.kdv_note}</span>
+                    </>
+                  )}
+                </div>
+              ))}
+              <p className="text-xs text-orange-600 mt-2 italic">
+                * Bu ödemeler KDV dahil tutarları göstermektedir. Aylık raporlama sırasında dikkate alınmalıdır.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
